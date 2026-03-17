@@ -6,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import CustomUser
 from .serializers import RegisterSerializer, UserSerializer
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
@@ -27,6 +29,7 @@ class RegisterView(APIView):
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+# @method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     def post(self, request):
         username = request.data.get('username')
