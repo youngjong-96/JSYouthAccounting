@@ -85,6 +85,13 @@ DATABASES = {
     }
 }
 
+# Backend/settings.py
+
+# 현재 IP 주소를 CSRF 신뢰 목록에 추가합니다.
+CSRF_TRUSTED_ORIGINS = [
+    'http://43.200.254.148',
+    'http://43.200.254.148:8000', # 포트 번호 포함 버전도 추가 권장
+]
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
