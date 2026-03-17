@@ -6,7 +6,7 @@ import TransactionForm from './TransactionForm';
 import Sidebar from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 
-const API_BASE_URL = 'http://localhost:8000/api/finance';
+const API_BASE_URL = 'http://43.200.254.148:8000/api/finance';
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
