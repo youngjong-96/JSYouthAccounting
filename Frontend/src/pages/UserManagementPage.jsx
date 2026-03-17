@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Users, Loader2, CheckCircle, Clock } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:8000/api/accounts';
+const API_BASE_URL = 'http://43.200.254.148:8000/api/accounts';
 
 const UserManagementPage = () => {
   const [users, setUsers] = useState([]);

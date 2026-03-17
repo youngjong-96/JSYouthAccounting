@@ -27,7 +27,7 @@ const RegisterPage = () => {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:8000/api/accounts/register/', formData);
+      const response = await axios.post('http://43.200.254.148:8000/api/accounts/register/', formData);
       const { user, tokens } = response.data;
       login(user, tokens.access);
       navigate('/');
