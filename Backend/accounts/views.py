@@ -21,15 +21,15 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            tokens = get_tokens_for_user(user)
+            # tokens = get_tokens_for_user(user)
             return Response({
-                "message": "User registered successfully",
+                "message": "회원가입이 완료되었습니다. 관리자의 승인 후 로그인이 가능합니다.",
                 "user": UserSerializer(user).data,
-                "tokens": tokens
+                # "tokens": tokens
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# @method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     def post(self, request):
         username = request.data.get('username')
@@ -37,7 +37,7 @@ class LoginView(APIView):
         
         user = authenticate(username=username, password=password)
         if user is not None:
-            if not user.is_approved:
+            if not user.is_superuser and not user.is_approved:
                 return Response({"error": "승인 대기 중입니다. 관리자의 승인을 기다려주세요."}, status=status.HTTP_403_FORBIDDEN)
                 
             tokens = get_tokens_for_user(user)
