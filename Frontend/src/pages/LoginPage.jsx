@@ -18,7 +18,7 @@ const LoginPage = () => {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:8000/api/accounts/login/', {
+      const response = await axios.post('http://43.200.254.148:8000/api/accounts/login/', {
         username,
         password
       });
