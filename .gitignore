@@ -1,0 +1,39 @@
+# =========================
+# Frontend (React/Vite)
+# =========================
+Frontend/node_modules/
+Frontend/dist/
+Frontend/dist-ssr/
+Frontend/.eslintcache
+Frontend/npm-debug.log*
+Frontend/yarn-debug.log*
+Frontend/yarn-error.log*
+Frontend/.env
+Frontend/.env.local
+Frontend/.env.development.local
+Frontend/.env.test.local
+Frontend/.env.production.local
+
+# =========================
+# Backend (Django)
+# =========================
+Backend/__pycache__/
+Backend/*.py[cod]
+Backend/*$py.class
+Backend/venv/
+Backend/env/
+Backend/db.sqlite3
+Backend/db.sqlite3-journal
+Backend/.env
+Backend/credentials.json
+
+# =========================
+# OS / Editor / IDE
+# =========================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.pem
