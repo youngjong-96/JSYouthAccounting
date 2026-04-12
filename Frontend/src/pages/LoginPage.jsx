@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { LogIn } from 'lucide-react';
 
 const LoginPage = () => {
@@ -9,6 +10,14 @@ const LoginPage = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+
+  // 로그인 성공 후 AuthContext가 user를 세팅하면 자동 이동
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -26,7 +35,7 @@ const LoginPage = () => {
         return;
       }
 
-      // After login, check profile approval
+      // 승인 여부 확인
       const { data: profile } = await supabase
         .from('profiles')
         .select('is_approved')
@@ -39,7 +48,7 @@ const LoginPage = () => {
         return;
       }
 
-      navigate('/');
+      // AuthContext의 onAuthStateChange가 user를 업데이트하면 useEffect가 navigate 호출
     } catch {
       setError('로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
     } finally {

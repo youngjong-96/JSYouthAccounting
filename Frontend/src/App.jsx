@@ -11,8 +11,11 @@ import UserManagementPage from './pages/UserManagementPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
-  
+  const { isAuthenticated, loading } = useAuth();
+
+  // Auth state not resolved yet — don't redirect prematurely
+  if (loading) return null;
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
