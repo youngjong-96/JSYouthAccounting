@@ -4,7 +4,7 @@ import Dashboard from './components/Dashboard';
 import SummaryView from './pages/SummaryView';
 import DetailView from './pages/DetailView';
 import ExpenseReport from './pages/ExpenseReport';
-import DraftReport from './pages/DraftReport';
+import ExpenseReportCreate from './pages/ExpenseReportCreate';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import UserManagementPage from './pages/UserManagementPage';
@@ -41,8 +41,8 @@ function App() {
             >
               <Route index element={<SummaryView />} />
               <Route path="detail" element={<DetailView />} />
+              <Route path="expense/create" element={<ExpenseReportCreate />} />
               <Route path="expense" element={<ExpenseReport />} />
-              <Route path="draft" element={<DraftReport />} />
               <Route path="users" element={<UserManagementPage />} />
             </Route>
           </Routes>
