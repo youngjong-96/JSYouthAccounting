@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FileText, Receipt, FileSignature, Menu, X, Users } from 'lucide-react';
+import { LayoutDashboard, FileText, Receipt, FilePlus, Menu, X, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
@@ -8,8 +8,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   const menuItems = [
     { name: '요약 보기', path: '/', icon: <LayoutDashboard className="w-5 h-5 mr-3" />, exact: true },
     { name: '상세내역 보기', path: '/detail', icon: <FileText className="w-5 h-5 mr-3" /> },
-    { name: '지출결의서 보기', path: '/expense', icon: <Receipt className="w-5 h-5 mr-3" /> },
-    { name: '기안서 보기', path: '/draft', icon: <FileSignature className="w-5 h-5 mr-3" /> },
+    { name: '지출결의서 작성하기', path: '/expense/create', icon: <FilePlus className="w-5 h-5 mr-3" /> },
+    { name: '지출결의서 보기', path: '/expense', icon: <Receipt className="w-5 h-5 mr-3" />, exact: true },
   ];
 
   if (user?.role === 'master') {

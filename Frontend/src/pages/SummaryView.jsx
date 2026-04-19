@@ -44,7 +44,7 @@ const SummaryView = () => {
           </div>
           <h3 className="font-semibold text-lg">인원 보고</h3>
         </div>
-        <div className="flex space-x-6">
+        <div className="flex flex-wrap gap-6">
           <div className="text-center">
             <span className="block text-sm text-gray-500">교사</span>
             <span className="block font-bold text-xl text-gray-900">{data.personnel_stats['교사'] || 0}</span>
@@ -57,9 +57,17 @@ const SummaryView = () => {
             <span className="block text-sm text-gray-500">새신자</span>
             <span className="block font-bold text-xl text-gray-900">{data.personnel_stats['새신자'] || 0}</span>
           </div>
+          <div className="text-center">
+            <span className="block text-sm text-gray-500">온라인</span>
+            <span className="block font-bold text-xl text-gray-900">{data.personnel_stats['온라인'] || 0}</span>
+          </div>
           <div className="text-center pl-6 border-l border-gray-200">
-            <span className="block text-sm font-medium text-blue-600">합계</span>
-            <span className="block font-bold text-2xl text-blue-700">{data.personnel_stats['합계'] || 0}</span>
+            <span className="block text-sm font-medium text-blue-600">합계 (교사 제외)</span>
+            <span className="block font-bold text-2xl text-blue-700">
+              {(data.personnel_stats['청년'] || 0) +
+               (data.personnel_stats['새신자'] || 0) +
+               (data.personnel_stats['온라인'] || 0)}
+            </span>
           </div>
         </div>
       </div>
@@ -152,23 +160,44 @@ const SummaryView = () => {
       </div>
       
       {/* Contributor List */}
-      {data?.contributors && (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-          <h3 className="font-semibold text-gray-800">헌금자 명단</h3>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Object.entries(data.contributors).map(([category, names]) => (
-              <div key={category} className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-                <h4 className="font-medium text-sm text-gray-500 mb-2">{category}</h4>
-                <p className="text-gray-900 leading-relaxed font-medium">{names}</p>
+      {data?.contributors && (() => {
+        // 주일헌금 명단을 raw_records에서 직접 추출 (기존 contributors에 없으므로)
+        // raw_records는 연/월까지만 필터링되어 오므로 주차도 클라이언트에서 필터링
+        const rawRecords = data.raw_records || [];
+        const weekStr = week ? `${week}주차` : null;
+        const junil = rawRecords
+          .filter(r => {
+            if (r.구분 !== '수입' || r.품목 !== '주일헌금' || !r.이름) return false;
+            if (weekStr) return r.주차 === weekStr || r.주차 === String(week);
+            return true;
+          })
+          .flatMap(r => String(r.이름).split(',').map(n => n.trim()).filter(Boolean));
+        const junilUnique = [...new Set(junil)];
+        const junilNames = junilUnique.length > 0 ? junilUnique.join(', ') : '없음';
+
+        const orderedEntries = [
+          ['주일헌금', junilNames],
+          ...Object.entries(data.contributors),
+        ];
+
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <h3 className="font-semibold text-gray-800">헌금자 명단</h3>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {orderedEntries.map(([category, names]) => (
+                  <div key={category} className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                    <h4 className="font-medium text-sm text-gray-500 mb-2">{category}</h4>
+                    <p className="text-gray-900 leading-relaxed font-medium">{names}</p>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
-        </div>
-      </div>
-      )}
+        );
+      })()}
 
       {/* Report Modals */}
       {showWeeklyReport && (
