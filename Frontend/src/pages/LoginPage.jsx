@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import logoWhite from '../assets/logo_white.png';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -70,12 +71,13 @@ const LoginPage = () => {
 
         <div className="relative px-6 pt-16 pb-12 sm:pt-20 sm:pb-16 text-center">
           {/* 로고 */}
-          <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20 mb-5 shadow-lg">
-            <span className="text-2xl sm:text-3xl font-bold text-gold-400">JS</span>
+          <div className="flex justify-center mb-5">
+            <img
+              src={logoWhite}
+              alt="JSYouth 로고"
+              className="h-16 sm:h-20 w-auto object-contain drop-shadow-lg"
+            />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            JSYouth
-          </h1>
           <p className="mt-1.5 text-sm text-white/60 font-light">
             청년부 회계 관리 시스템
           </p>

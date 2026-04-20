@@ -8,7 +8,7 @@ const SummaryView = () => {
   const { data, year, month, week } = useOutletContext();
   const [showWeeklyReport, setShowWeeklyReport] = React.useState(false);
   const [showMonthlyReport, setShowMonthlyReport] = React.useState(false);
-  
+
   if (!data) return null;
 
   const currentIncomeTotal = data?.weekly_stats?.income_total ?? data?.monthly_income_total ?? 0;
@@ -16,153 +16,177 @@ const SummaryView = () => {
   const currentIncomeCategories = data?.weekly_stats?.income_categories ?? data?.monthly_income_categories ?? {};
   const currentExpenseCategories = data?.weekly_stats?.expense_categories ?? data?.monthly_expense_categories ?? {};
 
+  // 현재 잔액 = 이월금(전년도까지 누적) + 해당 기간 누적 수입 - 해당 기간 누적 지출
+  const carryover = data?.carryover_balance ?? 0;
+  const cumulativeIncome = data?.cumulative_income_total ?? 0;
+  const cumulativeExpense = data?.cumulative_expense_total ?? 0;
+  const balance = carryover + cumulativeIncome - cumulativeExpense;
+
   return (
-    <>
-      <div className="mb-6 flex flex-col sm:flex-row justify-end gap-3">
+    <div className="space-y-5 animate-slideUp pb-8">
+
+      {/* ── 보고서 버튼 ── */}
+      <div className="flex gap-2">
         <button
           onClick={() => setShowWeeklyReport(true)}
-          className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 bg-white border-2 border-mist-200 hover:border-navy-300 text-navy-500 text-sm font-medium rounded-xl transition-all"
         >
-          <FileSpreadsheet className="w-4 h-4 mr-2" />
-          주간보고서 생성하기
+          <FileSpreadsheet className="w-4 h-4 text-mist-400" />
+          주간보고서
         </button>
         <button
           onClick={() => setShowMonthlyReport(true)}
-          className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 bg-white border-2 border-mist-200 hover:border-navy-300 text-navy-500 text-sm font-medium rounded-xl transition-all"
         >
-          <FileSpreadsheet className="w-4 h-4 mr-2" />
-          월간보고서 생성하기
+          <FileSpreadsheet className="w-4 h-4 text-mist-400" />
+          월간보고서
         </button>
       </div>
 
-      {/* Personnel Info */}
-      {data?.personnel_stats && (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center text-gray-700">
-          <div className="p-2 bg-blue-50 rounded-lg mr-3">
-            <Users className="w-6 h-6 text-blue-600" />
+      {/* ── 잔액 카드 (전체 폭) ── */}
+      <div className="bg-navy-500 rounded-2xl p-5 shadow-lg shadow-navy-500/20 relative overflow-hidden">
+        {/* 배경 장식 */}
+        <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/5" />
+        <div className="absolute -bottom-6 -left-6 w-24 h-24 rounded-full bg-white/5" />
+
+        <p className="text-xs text-white/50 font-light mb-1 relative z-10">현재 잔액</p>
+        <p className={`text-3xl font-bold relative z-10 ${balance >= 0 ? 'text-white' : 'text-red-300'}`}>
+          {balance >= 0 ? '' : '-'}{Math.abs(balance).toLocaleString()}
+          <span className="text-lg font-normal text-white/60 ml-1">원</span>
+        </p>
+        <div className="flex gap-3 mt-3 relative z-10 flex-wrap">
+          <div>
+            <p className="text-xs text-white/40">이월금</p>
+            <p className="text-sm font-semibold text-gold-400">{carryover.toLocaleString()}</p>
           </div>
-          <h3 className="font-semibold text-lg">인원 보고</h3>
-        </div>
-        <div className="flex flex-wrap gap-6">
-          <div className="text-center">
-            <span className="block text-sm text-gray-500">교사</span>
-            <span className="block font-bold text-xl text-gray-900">{data.personnel_stats['교사'] || 0}</span>
+          <div className="w-px bg-white/10" />
+          <div>
+            <p className="text-xs text-white/40">누적 수입</p>
+            <p className="text-sm font-semibold text-green-300">+{cumulativeIncome.toLocaleString()}</p>
           </div>
-          <div className="text-center">
-            <span className="block text-sm text-gray-500">청년</span>
-            <span className="block font-bold text-xl text-gray-900">{data.personnel_stats['청년'] || 0}</span>
-          </div>
-          <div className="text-center">
-            <span className="block text-sm text-gray-500">새신자</span>
-            <span className="block font-bold text-xl text-gray-900">{data.personnel_stats['새신자'] || 0}</span>
-          </div>
-          <div className="text-center">
-            <span className="block text-sm text-gray-500">온라인</span>
-            <span className="block font-bold text-xl text-gray-900">{data.personnel_stats['온라인'] || 0}</span>
-          </div>
-          <div className="text-center pl-6 border-l border-gray-200">
-            <span className="block text-sm font-medium text-blue-600">합계 (교사 제외)</span>
-            <span className="block font-bold text-2xl text-blue-700">
-              {(data.personnel_stats['청년'] || 0) +
-               (data.personnel_stats['새신자'] || 0) +
-               (data.personnel_stats['온라인'] || 0)}
-            </span>
+          <div className="w-px bg-white/10" />
+          <div>
+            <p className="text-xs text-white/40">누적 지출</p>
+            <p className="text-sm font-semibold text-red-300">-{cumulativeExpense.toLocaleString()}</p>
           </div>
         </div>
       </div>
+
+      {/* ── 수입 / 지출 카드 ── */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* 수입 */}
+        <div className="bg-white rounded-2xl p-4 border border-mist-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 bg-green-50 rounded-lg">
+              <TrendingUp className="w-4 h-4 text-green-600" />
+            </div>
+            <span className="text-xs font-medium text-mist-500">총 수입</span>
+          </div>
+          <p className="text-xl font-bold text-navy-500 tabular-nums">
+            {currentIncomeTotal.toLocaleString()}
+            <span className="text-xs font-normal text-mist-400 ml-1">원</span>
+          </p>
+        </div>
+
+        {/* 지출 */}
+        <div className="bg-white rounded-2xl p-4 border border-mist-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 bg-red-50 rounded-lg">
+              <TrendingDown className="w-4 h-4 text-red-500" />
+            </div>
+            <span className="text-xs font-medium text-mist-500">총 지출</span>
+          </div>
+          <p className="text-xl font-bold text-navy-500 tabular-nums">
+            {currentExpenseTotal.toLocaleString()}
+            <span className="text-xs font-normal text-mist-400 ml-1">원</span>
+          </p>
+        </div>
+      </div>
+
+      {/* ── 인원 보고 ── */}
+      {data?.personnel_stats && (
+        <div className="bg-white rounded-2xl border border-mist-200 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3.5 border-b border-mist-100">
+            <div className="p-1.5 bg-navy-50 rounded-lg">
+              <Users className="w-4 h-4 text-navy-500" />
+            </div>
+            <h3 className="text-sm font-semibold text-navy-500">인원 보고</h3>
+          </div>
+          <div className="px-5 py-4">
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: '교사', key: '교사' },
+                { label: '청년', key: '청년' },
+                { label: '새신자', key: '새신자' },
+                { label: '온라인', key: '온라인' },
+              ].map(({ label, key }) => (
+                <div key={key} className="text-center bg-cream-100 rounded-xl py-3">
+                  <p className="text-xs text-mist-500 mb-1">{label}</p>
+                  <p className="text-lg font-bold text-navy-500">{data.personnel_stats[key] || 0}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 bg-navy-500 rounded-xl py-2.5 px-4 flex items-center justify-between">
+              <span className="text-xs text-white/60">합계 (교사 제외)</span>
+              <span className="text-lg font-bold text-gold-400">
+                {(data.personnel_stats['청년'] || 0) +
+                 (data.personnel_stats['새신자'] || 0) +
+                 (data.personnel_stats['온라인'] || 0)}명
+              </span>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* Income Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-green-100 overflow-hidden relative group transition-all hover:shadow-md">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <TrendingUp className="w-24 h-24 text-green-500" />
+      {/* ── 항목별 합계 ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* 수입 내역 */}
+        <div className="bg-white rounded-2xl border border-mist-200 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3.5 border-b border-mist-100 bg-green-50/50">
+            <TrendingUp className="w-4 h-4 text-green-600" />
+            <h3 className="text-sm font-semibold text-navy-500">수입 항목별</h3>
           </div>
-          <div className="p-6 relative z-10">
-            <div className="flex items-center">
-              <div className="p-2 bg-green-50 rounded-lg">
-                <TrendingUp className="w-6 h-6 text-green-600" />
-              </div>
-              <h2 className="ml-3 text-lg font-semibold text-gray-700">총 수입</h2>
-            </div>
-            <div className="mt-4">
-              <span className="text-4xl font-bold text-gray-900">
-                {currentIncomeTotal.toLocaleString()}
-              </span>
-              <span className="ml-2 text-gray-500 font-medium">원</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Expense Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-red-100 overflow-hidden relative group transition-all hover:shadow-md">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <TrendingDown className="w-24 h-24 text-red-500" />
-          </div>
-          <div className="p-6 relative z-10">
-            <div className="flex items-center">
-              <div className="p-2 bg-red-50 rounded-lg">
-                <TrendingDown className="w-6 h-6 text-red-600" />
-              </div>
-              <h2 className="ml-3 text-lg font-semibold text-gray-700">총 지출</h2>
-            </div>
-            <div className="mt-4">
-              <span className="text-4xl font-bold text-gray-900">
-                {currentExpenseTotal.toLocaleString()}
-              </span>
-              <span className="ml-2 text-gray-500 font-medium">원</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Breakdown Sections */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        {/* Income Breakdown */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-            <h3 className="font-semibold text-gray-800">수입 항목별 합계</h3>
-          </div>
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-mist-100">
             {Object.entries(currentIncomeCategories).length > 0 ? (
               Object.entries(currentIncomeCategories).map(([item, amount]) => (
-                <li key={item} className="px-6 py-4 flex justify-between items-center hover:bg-gray-50 transition-colors">
-                  <span className="font-medium text-gray-700">{item}</span>
-                  <span className="font-semibold text-gray-900">{amount.toLocaleString()} 원</span>
+                <li key={item} className="px-5 py-3 flex justify-between items-center">
+                  <span className="text-sm text-navy-400">{item}</span>
+                  <span className="text-sm font-semibold text-navy-500 tabular-nums">
+                    {amount.toLocaleString()}원
+                  </span>
                 </li>
               ))
             ) : (
-              <li className="px-6 py-8 text-center text-gray-400">데이터가 없습니다.</li>
+              <li className="px-5 py-6 text-center text-sm text-mist-400">데이터 없음</li>
             )}
           </ul>
         </div>
 
-        {/* Expense Breakdown */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-            <h3 className="font-semibold text-gray-800">지출 항목별 합계</h3>
+        {/* 지출 내역 */}
+        <div className="bg-white rounded-2xl border border-mist-200 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3.5 border-b border-mist-100 bg-red-50/50">
+            <TrendingDown className="w-4 h-4 text-red-500" />
+            <h3 className="text-sm font-semibold text-navy-500">지출 항목별</h3>
           </div>
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-mist-100">
             {Object.entries(currentExpenseCategories).length > 0 ? (
               Object.entries(currentExpenseCategories).map(([item, amount]) => (
-                <li key={item} className="px-6 py-4 flex justify-between items-center hover:bg-gray-50 transition-colors">
-                  <span className="font-medium text-gray-700">{item}</span>
-                  <span className="font-semibold text-gray-900">{amount.toLocaleString()} 원</span>
+                <li key={item} className="px-5 py-3 flex justify-between items-center">
+                  <span className="text-sm text-navy-400">{item}</span>
+                  <span className="text-sm font-semibold text-navy-500 tabular-nums">
+                    {amount.toLocaleString()}원
+                  </span>
                 </li>
               ))
             ) : (
-              <li className="px-6 py-8 text-center text-gray-400">데이터가 없습니다.</li>
+              <li className="px-5 py-6 text-center text-sm text-mist-400">데이터 없음</li>
             )}
           </ul>
         </div>
       </div>
-      
-      {/* Contributor List */}
+
+      {/* ── 헌금자 명단 ── */}
       {data?.contributors && (() => {
-        // 주일헌금 명단을 raw_records에서 직접 추출 (기존 contributors에 없으므로)
-        // raw_records는 연/월까지만 필터링되어 오므로 주차도 클라이언트에서 필터링
         const rawRecords = data.raw_records || [];
         const weekStr = week ? `${week}주차` : null;
         const junil = rawRecords
@@ -172,8 +196,7 @@ const SummaryView = () => {
             return true;
           })
           .flatMap(r => String(r.이름).split(',').map(n => n.trim()).filter(Boolean));
-        const junilUnique = [...new Set(junil)];
-        const junilNames = junilUnique.length > 0 ? junilUnique.join(', ') : '없음';
+        const junilNames = [...new Set(junil)].join(', ') || '없음';
 
         const orderedEntries = [
           ['주일헌금', junilNames],
@@ -181,43 +204,36 @@ const SummaryView = () => {
         ];
 
         return (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="font-semibold text-gray-800">헌금자 명단</h3>
+          <div className="bg-white rounded-2xl border border-mist-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-mist-100">
+              <h3 className="text-sm font-semibold text-navy-500">헌금자 명단</h3>
             </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {orderedEntries.map(([category, names]) => (
-                  <div key={category} className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-                    <h4 className="font-medium text-sm text-gray-500 mb-2">{category}</h4>
-                    <p className="text-gray-900 leading-relaxed font-medium">{names}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {orderedEntries.map(([category, names]) => (
+                <div key={category} className="bg-cream-100 rounded-xl p-3.5">
+                  <h4 className="text-xs font-medium text-mist-500 mb-1.5">{category}</h4>
+                  <p className="text-sm text-navy-500 font-medium leading-relaxed">{names}</p>
+                </div>
+              ))}
             </div>
           </div>
         );
       })()}
 
-      {/* Report Modals */}
+      {/* 모달 */}
       {showWeeklyReport && (
-        <WeeklyReportModal 
-          onClose={() => setShowWeeklyReport(false)} 
-          data={data}
-          year={year}
-          month={month}
-          week={week}
+        <WeeklyReportModal
+          onClose={() => setShowWeeklyReport(false)}
+          data={data} year={year} month={month} week={week}
         />
       )}
       {showMonthlyReport && (
-        <MonthlyReportModal 
-          onClose={() => setShowMonthlyReport(false)} 
-          data={data}
-          year={year}
-          month={month}
+        <MonthlyReportModal
+          onClose={() => setShowMonthlyReport(false)}
+          data={data} year={year} month={month}
         />
       )}
-    </>
+    </div>
   );
 };
 

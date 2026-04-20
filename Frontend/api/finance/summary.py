@@ -84,17 +84,43 @@ class handler(BaseHTTPRequestHandler):
             self._send_json({"message": "No data found."}, 200)
             return
 
+        # 필터 전 전체 데이터 보존
+        df_all = df.copy()
+
         # 1. Total balance across ALL data
         total_income_all = df[df["구분"] == "수입"]["금액"].sum()
         total_expense_all = df[df["구분"] == "지출"]["금액"].sum()
         total_balance = int(total_income_all - total_expense_all)
 
+        # 2. 이월금: 선택 연도 이전까지의 누적 잔액
+        carryover_balance = 0
+        if year:
+            df_pre_year = df_all[
+                pd.to_numeric(df_all["년"], errors="coerce") < int(year)
+            ]
+            co_income = int(df_pre_year[df_pre_year["구분"] == "수입"]["금액"].sum())
+            co_expense = int(df_pre_year[df_pre_year["구분"] == "지출"]["금액"].sum())
+            carryover_balance = co_income - co_expense
+
         # Filter by year
         if year:
             df = df[df["년"].astype(str) == str(year)]
+        df_year = df.copy()  # 연도 필터 후 데이터 보존
 
         yearly_income_total = int(df[df["구분"] == "수입"]["금액"].sum())
         yearly_expense_total = int(df[df["구분"] == "지출"]["금액"].sum())
+
+        # 3. 누적 수입/지출: 선택 연도 1월 ~ 선택 월까지
+        if year and month:
+            df_cumulative = df_year[
+                pd.to_numeric(df_year["월"], errors="coerce") <= int(month)
+            ]
+            cumulative_income_total = int(df_cumulative[df_cumulative["구분"] == "수입"]["금액"].sum())
+            cumulative_expense_total = int(df_cumulative[df_cumulative["구분"] == "지출"]["금액"].sum())
+        else:
+            # 월 필터 없으면 연도 전체 누적
+            cumulative_income_total = yearly_income_total
+            cumulative_expense_total = yearly_expense_total
 
         # Filter by month
         if month:
@@ -188,6 +214,9 @@ class handler(BaseHTTPRequestHandler):
 
         response_data = {
             "total_balance": total_balance,
+            "carryover_balance": carryover_balance,
+            "cumulative_income_total": cumulative_income_total,
+            "cumulative_expense_total": cumulative_expense_total,
             "yearly_income_total": yearly_income_total,
             "yearly_expense_total": yearly_expense_total,
             "monthly_income_total": monthly_income_total,
