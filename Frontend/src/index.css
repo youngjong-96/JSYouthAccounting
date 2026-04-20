@@ -2,8 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── G마켓 산스 폰트 ── */
+@font-face {
+  font-family: 'GmarketSans';
+  font-weight: 300;
+  font-style: normal;
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansLight.woff') format('woff');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'GmarketSans';
+  font-weight: 500;
+  font-style: normal;
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'GmarketSans';
+  font-weight: 700;
+  font-style: normal;
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff');
+  font-display: swap;
+}
+
 @layer base {
   body {
-    @apply bg-white text-gray-900 font-sans antialiased;
+    @apply bg-cream-100 text-navy-500 font-gmarket antialiased;
+  }
+
+  /* 모바일 터치 최적화 */
+  input, button, select, textarea {
+    @apply font-gmarket;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 스크롤바 스타일링 */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-mist-300 rounded-full;
+  }
+}
+
+@layer utilities {
+  /* 안전 영역 (노치, 홈 인디케이터) */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
