@@ -3,9 +3,11 @@ import { useOutletContext } from 'react-router-dom';
 import { TrendingUp, TrendingDown, Users, FileSpreadsheet } from 'lucide-react';
 import WeeklyReportModal from '../components/WeeklyReportModal';
 import MonthlyReportModal from '../components/MonthlyReportModal';
+import { useAuth } from '../context/AuthContext';
 
 const SummaryView = () => {
   const { data, year, month, week } = useOutletContext();
+  const { isHeongeumOnly } = useAuth();
   const [showWeeklyReport, setShowWeeklyReport] = React.useState(false);
   const [showMonthlyReport, setShowMonthlyReport] = React.useState(false);
 
@@ -16,11 +18,54 @@ const SummaryView = () => {
   const currentIncomeCategories = data?.weekly_stats?.income_categories ?? data?.monthly_income_categories ?? {};
   const currentExpenseCategories = data?.weekly_stats?.expense_categories ?? data?.monthly_expense_categories ?? {};
 
-  // 현재 잔액 = 이월금(전년도까지 누적) + 해당 기간 누적 수입 - 해당 기간 누적 지출
   const carryover = data?.carryover_balance ?? 0;
   const cumulativeIncome = data?.cumulative_income_total ?? 0;
   const cumulativeExpense = data?.cumulative_expense_total ?? 0;
   const balance = carryover + cumulativeIncome - cumulativeExpense;
+
+  /* ── 주보팀 전용: 헌금명단만 표시 ── */
+  if (isHeongeumOnly) {
+    if (!data?.contributors) {
+      return (
+        <div className="bg-white rounded-2xl border border-mist-200 p-14 text-center animate-slideUp">
+          <Users className="w-9 h-9 text-mist-300 mx-auto mb-3" />
+          <p className="text-sm text-mist-500">헌금명단 데이터가 없습니다.</p>
+        </div>
+      );
+    }
+    const rawRecords = data.raw_records || [];
+    const weekStr = week ? `${week}주차` : null;
+    const junil = rawRecords
+      .filter(r => {
+        if (r.구분 !== '수입' || r.품목 !== '주일헌금' || !r.이름) return false;
+        if (weekStr) return r.주차 === weekStr || r.주차 === String(week);
+        return true;
+      })
+      .flatMap(r => String(r.이름).split(',').map(n => n.trim()).filter(Boolean));
+    const junilNames = [...new Set(junil)].join(', ') || '없음';
+    const orderedEntries = [['주일헌금', junilNames], ...Object.entries(data.contributors)];
+
+    return (
+      <div className="animate-slideUp pb-8">
+        <div className="bg-white rounded-2xl border border-mist-200 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3.5 border-b border-mist-100">
+            <div className="p-1.5 bg-navy-50 rounded-lg">
+              <Users className="w-4 h-4 text-navy-500" />
+            </div>
+            <h3 className="text-sm font-semibold text-navy-500">헌금자 명단</h3>
+          </div>
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {orderedEntries.map(([category, names]) => (
+              <div key={category} className="bg-cream-100 rounded-xl p-3.5">
+                <h4 className="text-xs font-medium text-mist-500 mb-1.5">{category}</h4>
+                <p className="text-sm text-navy-500 font-medium leading-relaxed">{names}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 animate-slideUp pb-8">

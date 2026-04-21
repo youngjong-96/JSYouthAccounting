@@ -5,17 +5,51 @@ import { useAuth } from '../context/AuthContext';
 import logoWhite from '../assets/logo_white.png';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
-  const { user } = useAuth();
-  const menuItems = [
-    { name: '요약 보기', path: '/', icon: <LayoutDashboard className="w-5 h-5" />, exact: true },
-    { name: '상세내역 보기', path: '/detail', icon: <FileText className="w-5 h-5" /> },
-    { name: '지출결의서 작성하기', path: '/expense/create', icon: <FilePlus className="w-5 h-5" /> },
-    { name: '지출결의서 보기', path: '/expense', icon: <Receipt className="w-5 h-5" />, exact: true },
+  const {
+    user,
+    canViewSummary,
+    canViewDetail,
+    canWriteExpense,
+    canViewExpense,
+    canManageUsers,
+  } = useAuth();
+
+  const allMenuItems = [
+    {
+      name: '요약 보기',
+      path: '/',
+      icon: <LayoutDashboard className="w-5 h-5" />,
+      exact: true,
+      show: canViewSummary,
+    },
+    {
+      name: '상세내역 보기',
+      path: '/detail',
+      icon: <FileText className="w-5 h-5" />,
+      show: canViewDetail,
+    },
+    {
+      name: '지출결의서 작성하기',
+      path: '/expense/create',
+      icon: <FilePlus className="w-5 h-5" />,
+      show: canWriteExpense,
+    },
+    {
+      name: '지출결의서 보기',
+      path: '/expense',
+      icon: <Receipt className="w-5 h-5" />,
+      exact: true,
+      show: canViewExpense,
+    },
+    {
+      name: '사용자 관리',
+      path: '/users',
+      icon: <Users className="w-5 h-5" />,
+      show: canManageUsers,
+    },
   ];
 
-  if (user?.role === 'master') {
-    menuItems.push({ name: '사용자 관리', path: '/users', icon: <Users className="w-5 h-5" /> });
-  }
+  const menuItems = allMenuItems.filter(item => item.show);
 
   return (
     <>
@@ -49,6 +83,17 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           <div className="px-5 py-3 border-b border-white/10">
             <p className="text-xs text-white/40 font-light">로그인 계정</p>
             <p className="text-sm text-white/90 font-medium truncate mt-0.5">{user.name}</p>
+            {user.role && (
+              <p className="text-xs text-gold-300/70 mt-0.5">
+                {{
+                  master:     '마스터',
+                  accounting: '회계팀',
+                  mokbuhoe:   '목부회',
+                  juboteam:   '주보팀',
+                  leader:     '청년부리더',
+                }[user.role] || user.role}
+              </p>
+            )}
           </div>
         )}
 
@@ -74,7 +119,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           ))}
         </nav>
 
-        {/* 하단 버전 */}
+        {/* 하단 */}
         <div className="px-5 py-3 border-t border-white/10">
           <p className="text-xs text-white/30">JSYouth 회계시스템</p>
         </div>
