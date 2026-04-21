@@ -1,25 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Receipt, Eye, Trash2, FileText, AlertCircle } from 'lucide-react';
+import { Loader2, Receipt, Eye, Trash2, FileText, AlertCircle, FilePlus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { getExpenseReports, getExpenseReport, deleteExpenseReport } from '../lib/expenseReportService';
 import ExpenseReportDetailModal from '../components/ExpenseReportDetailModal';
 
 /* ── 상태 뱃지 ── */
 const statusMap = {
-  draft: { label: '임시저장', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  submitted: { label: '제출완료', color: 'bg-green-100 text-green-700 border-green-200' },
-  approved: { label: '승인완료', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  draft:     { label: '임시저장', cls: 'bg-gold-50 text-gold-600 border-gold-200' },
+  submitted: { label: '제출완료', cls: 'bg-green-50 text-green-700 border-green-200' },
+  approved:  { label: '승인완료', cls: 'bg-navy-50 text-navy-600 border-navy-200' },
 };
 
 function StatusBadge({ status }) {
   const s = statusMap[status] || statusMap.draft;
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-semibold rounded-full border ${s.color}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-semibold rounded-full border ${s.cls}`}>
       {s.label}
     </span>
   );
 }
 
-/* ── 날짜 포맷 ── */
 function formatDate(dateStr) {
   if (!dateStr) return '-';
   const d = new Date(dateStr);
@@ -28,153 +28,140 @@ function formatDate(dateStr) {
 
 /* ========================================= */
 const ExpenseReport = () => {
-  const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [showDetail, setShowDetail] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const navigate = useNavigate();
+  const [reports, setReports]           = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState(null);
+  const [selectedReport, setSelected]   = useState(null);
+  const [detailLoading, setDetailLoad]  = useState(false);
+  const [showDetail, setShowDetail]     = useState(false);
+  const [deleteConfirmId, setDeleteId]  = useState(null);
 
-  // 목록 조회
   const fetchReports = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getExpenseReports();
-      setReports(data || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true); setError(null);
+    try { setReports((await getExpenseReports()) || []); }
+    catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { fetchReports(); }, []);
+
+  const handleView = async (id) => {
+    setDetailLoad(true);
+    try { setSelected(await getExpenseReport(id)); setShowDetail(true); }
+    catch (e) { alert(`조회 실패: ${e.message}`); }
+    finally { setDetailLoad(false); }
   };
 
-  useEffect(() => {
-    fetchReports();
-  }, []);
-
-  // 상세 조회
-  const handleViewDetail = async (id) => {
-    setDetailLoading(true);
-    try {
-      const data = await getExpenseReport(id);
-      setSelectedReport(data);
-      setShowDetail(true);
-    } catch (err) {
-      alert(`조회 실패: ${err.message}`);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  // 삭제
   const handleDelete = async (id) => {
-    try {
-      await deleteExpenseReport(id);
-      setDeleteConfirmId(null);
-      fetchReports();
-    } catch (err) {
-      alert(`삭제 실패: ${err.message}`);
-    }
+    try { await deleteExpenseReport(id); setDeleteId(null); fetchReports(); }
+    catch (e) { alert(`삭제 실패: ${e.message}`); }
   };
 
   /* ── 로딩 ── */
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-32">
-        <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-        <span className="ml-4 text-lg font-medium text-gray-600">결의서 목록을 불러오는 중...</span>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center py-24">
+      <Loader2 className="w-9 h-9 text-navy-400 animate-spin mb-3" />
+      <p className="text-sm text-mist-500">결의서 목록을 불러오는 중...</p>
+    </div>
+  );
 
   /* ── 에러 ── */
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
-        <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
-        <p className="text-red-600 font-medium">{error}</p>
-        <button onClick={fetchReports} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">
-          다시 시도
-        </button>
-      </div>
-    );
-  }
+  if (error) return (
+    <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center animate-fadeIn">
+      <AlertCircle className="w-9 h-9 text-red-400 mx-auto mb-3" />
+      <p className="text-red-600 font-medium text-sm mb-4">{error}</p>
+      <button onClick={fetchReports} className="px-5 py-2.5 bg-navy-500 text-white rounded-xl text-sm font-medium hover:bg-navy-600 transition-colors">
+        다시 시도
+      </button>
+    </div>
+  );
 
   return (
-    <>
-      {/* 헤더 */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-3">
+    <div className="space-y-4 animate-slideUp pb-8">
+
+      {/* ── 헤더 ── */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-blue-50 rounded-xl">
-            <Receipt className="w-6 h-6 text-blue-600" />
+          <div className="p-2 bg-navy-50 rounded-xl">
+            <Receipt className="w-5 h-5 text-navy-500" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-gray-900">지출결의서 보기</h2>
-            <p className="text-sm text-gray-500">총 {reports.length}건의 결의서</p>
+            <h2 className="text-base font-bold text-navy-500">지출결의서 보기</h2>
+            <p className="text-xs text-mist-500">총 {reports.length}건</p>
           </div>
         </div>
+        <button
+          onClick={() => navigate('/expense/create')}
+          className="inline-flex items-center gap-1.5 px-3 py-2 bg-gold-400 hover:bg-gold-500 text-navy-700 text-xs font-semibold rounded-xl transition-all shadow-sm"
+        >
+          <FilePlus className="w-4 h-4" />
+          새 결의서
+        </button>
       </div>
 
-      {/* 빈 상태 */}
+      {/* ── 빈 상태 ── */}
       {reports.length === 0 ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-16 text-center">
-          <div className="bg-gray-50 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-5">
-            <FileText className="w-10 h-10 text-gray-300" />
+        <div className="bg-white rounded-2xl border border-mist-200 p-14 text-center">
+          <div className="w-16 h-16 bg-cream-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <FileText className="w-8 h-8 text-mist-300" />
           </div>
-          <h3 className="text-lg font-bold text-gray-800 mb-2">작성된 결의서가 없습니다</h3>
-          <p className="text-gray-500 text-sm">사이드바에서 "지출결의서 작성하기"를 클릭하여 새 결의서를 작성해보세요.</p>
+          <h3 className="text-sm font-bold text-navy-500 mb-1.5">작성된 결의서가 없습니다</h3>
+          <p className="text-xs text-mist-500 mb-5">"새 결의서" 버튼을 눌러 지출결의서를 작성해보세요.</p>
+          <button
+            onClick={() => navigate('/expense/create')}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-navy-500 hover:bg-navy-600 text-white text-sm font-medium rounded-xl transition-all"
+          >
+            <FilePlus className="w-4 h-4" />
+            지출결의서 작성하기
+          </button>
         </div>
       ) : (
         <>
-          {/* 데스크톱 테이블 */}
-          <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          {/* ── 데스크톱 테이블 ── */}
+          <div className="hidden md:block bg-white rounded-2xl border border-mist-200 shadow-sm overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-5 py-4 text-left font-semibold text-gray-600">No.</th>
-                  <th className="px-5 py-4 text-left font-semibold text-gray-600">결의일자</th>
-                  <th className="px-5 py-4 text-right font-semibold text-gray-600">금액</th>
-                  <th className="px-5 py-4 text-center font-semibold text-gray-600">항목수</th>
-                  <th className="px-5 py-4 text-left font-semibold text-gray-600">주요 내역</th>
-                  <th className="px-5 py-4 text-center font-semibold text-gray-600">상태</th>
-                  <th className="px-5 py-4 text-center font-semibold text-gray-600">작업</th>
+                <tr className="bg-cream-100 border-b border-mist-200">
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-mist-500 uppercase tracking-wider">No.</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-mist-500 uppercase tracking-wider">결의일자</th>
+                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-mist-500 uppercase tracking-wider">금액</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-mist-500 uppercase tracking-wider">주요 내역</th>
+                  <th className="px-5 py-3.5 text-center text-xs font-semibold text-mist-500 uppercase tracking-wider">상태</th>
+                  <th className="px-5 py-3.5 text-center text-xs font-semibold text-mist-500 uppercase tracking-wider">작업</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-mist-100">
                 {reports.map((report, idx) => {
                   const firstItem = report.expense_items?.[0];
-                  const summary = firstItem
-                    ? `${firstItem.account_category} - ${firstItem.description}`
-                    : '-';
+                  const summary = firstItem ? `${firstItem.account_category} · ${firstItem.description}` : '-';
                   return (
-                    <tr key={report.id} className="hover:bg-blue-50/30 transition-colors group">
-                      <td className="px-5 py-4 font-medium text-gray-500">{reports.length - idx}</td>
-                      <td className="px-5 py-4 font-medium text-gray-900">{formatDate(report.resolution_date)}</td>
-                      <td className="px-5 py-4 text-right font-bold text-gray-900">
-                        ₩ {(report.total_amount || 0).toLocaleString()}
+                    <tr
+                      key={report.id}
+                      className="hover:bg-cream-100/60 transition-colors group cursor-pointer"
+                      onClick={() => handleView(report.id)}
+                    >
+                      <td className="px-5 py-4 text-xs text-mist-400 font-medium">{reports.length - idx}</td>
+                      <td className="px-5 py-4 text-sm font-medium text-navy-500">{formatDate(report.resolution_date)}</td>
+                      <td className="px-5 py-4 text-right font-bold text-navy-500 tabular-nums">
+                        {(report.total_amount || 0).toLocaleString()}원
                       </td>
-                      <td className="px-5 py-4 text-center text-gray-600">
-                        {report.expense_items?.length || 0}건
-                      </td>
-                      <td className="px-5 py-4 text-gray-600 max-w-[200px] truncate">{summary}</td>
+                      <td className="px-5 py-4 text-sm text-mist-500 max-w-[220px] truncate">{summary}</td>
                       <td className="px-5 py-4 text-center">
                         <StatusBadge status={report.status} />
                       </td>
-                      <td className="px-5 py-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="px-5 py-4 text-center" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
                           <button
-                            onClick={() => handleViewDetail(report.id)}
+                            onClick={() => handleView(report.id)}
                             disabled={detailLoading}
-                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                            className="p-2 text-navy-400 hover:text-navy-600 hover:bg-navy-50 rounded-lg transition-colors"
                             title="상세 보기"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => setDeleteConfirmId(report.id)}
-                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                            onClick={() => setDeleteId(report.id)}
+                            className="p-2 text-mist-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                             title="삭제"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -188,31 +175,31 @@ const ExpenseReport = () => {
             </table>
           </div>
 
-          {/* 모바일 카드 */}
+          {/* ── 모바일 카드 ── */}
           <div className="md:hidden space-y-3">
             {reports.map((report, idx) => {
               const firstItem = report.expense_items?.[0];
-              const summary = firstItem
-                ? `${firstItem.account_category} - ${firstItem.description}`
-                : '-';
+              const summary = firstItem ? `${firstItem.account_category} · ${firstItem.description}` : '-';
               return (
                 <div
                   key={report.id}
-                  onClick={() => handleViewDetail(report.id)}
-                  className="bg-white rounded-xl border border-gray-200 p-4 active:bg-blue-50 transition-colors cursor-pointer"
+                  onClick={() => handleView(report.id)}
+                  className="bg-white rounded-2xl border border-mist-200 p-4 active:bg-cream-100 transition-colors cursor-pointer"
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-400">#{reports.length - idx}</span>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <span className="text-xs text-mist-400">#{reports.length - idx}</span>
                     <StatusBadge status={report.status} />
                   </div>
                   <div className="flex items-baseline justify-between mb-1.5">
-                    <span className="font-medium text-gray-700 text-sm">{formatDate(report.resolution_date)}</span>
-                    <span className="text-lg font-bold text-gray-900">₩ {(report.total_amount || 0).toLocaleString()}</span>
+                    <span className="text-sm font-medium text-navy-400">{formatDate(report.resolution_date)}</span>
+                    <span className="text-lg font-bold text-navy-500 tabular-nums">
+                      {(report.total_amount || 0).toLocaleString()}원
+                    </span>
                   </div>
-                  <p className="text-xs text-gray-500 truncate">{summary}</p>
-                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
-                    <span className="text-xs text-gray-400">{report.expense_items?.length || 0}개 항목</span>
-                    <span className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                  <p className="text-xs text-mist-400 truncate mb-3">{summary}</p>
+                  <div className="flex items-center justify-between pt-2.5 border-t border-mist-100">
+                    <span className="text-xs text-mist-400">{report.expense_items?.length || 0}개 항목</span>
+                    <span className="text-xs text-navy-400 font-medium flex items-center gap-1">
                       <Eye className="w-3 h-3" /> 자세히 보기
                     </span>
                   </div>
@@ -223,42 +210,37 @@ const ExpenseReport = () => {
         </>
       )}
 
-      {/* 삭제 확인 모달 */}
+      {/* ── 삭제 확인 모달 ── */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="fixed inset-0 bg-gray-900/50" onClick={() => setDeleteConfirmId(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">결의서 삭제</h3>
-            <p className="text-sm text-gray-600 mb-6">정말로 이 지출결의서를 삭제하시겠습니까?<br />삭제된 데이터는 복구할 수 없습니다.</p>
-            <div className="flex gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="fixed inset-0 bg-navy-900/60 backdrop-blur-sm" onClick={() => setDeleteId(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-slideUp">
+            <h3 className="text-base font-bold text-navy-500 mb-2">결의서 삭제</h3>
+            <p className="text-sm text-mist-500 mb-6 leading-relaxed">
+              정말로 이 지출결의서를 삭제하시겠습니까?<br />삭제된 데이터는 복구할 수 없습니다.
+            </p>
+            <div className="flex gap-2">
               <button
-                onClick={() => setDeleteConfirmId(null)}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition-colors"
-              >
-                취소
-              </button>
+                onClick={() => setDeleteId(null)}
+                className="flex-1 py-2.5 bg-cream-100 text-navy-500 font-medium rounded-xl hover:bg-mist-200 transition-colors text-sm"
+              >취소</button>
               <button
                 onClick={() => handleDelete(deleteConfirmId)}
-                className="flex-1 px-4 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors"
-              >
-                삭제하기
-              </button>
+                className="flex-1 py-2.5 bg-red-500 text-white font-medium rounded-xl hover:bg-red-600 transition-colors text-sm"
+              >삭제하기</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 상세 보기 모달 */}
+      {/* ── 상세 모달 ── */}
       {showDetail && selectedReport && (
         <ExpenseReportDetailModal
           report={selectedReport}
-          onClose={() => {
-            setShowDetail(false);
-            setSelectedReport(null);
-          }}
+          onClose={() => { setShowDetail(false); setSelected(null); }}
         />
       )}
-    </>
+    </div>
   );
 };
 

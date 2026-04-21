@@ -68,16 +68,16 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-start justify-center min-h-screen px-2 pt-4 pb-20 sm:p-4">
         {/* 백드롭 */}
-        <div className="fixed inset-0 bg-gray-900/60 transition-opacity" onClick={onClose} />
+        <div className="fixed inset-0 bg-navy-900/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
         {/* 모달 컨테이너 */}
         <div className="relative w-full max-w-[750px] bg-white shadow-2xl rounded-2xl overflow-hidden my-4">
           {/* 닫기 버튼 */}
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 z-10 p-2 bg-white/90 hover:bg-gray-100 rounded-full shadow-md transition-colors"
+            className="absolute top-3 right-3 z-10 p-2 bg-white hover:bg-cream-100 rounded-full shadow-md transition-colors border border-mist-200"
           >
-            <X className="w-5 h-5 text-gray-600" />
+            <X className="w-5 h-5 text-navy-500" />
           </button>
 
           {/* ═══════ 결의서 양식 ═══════ */}
@@ -287,7 +287,7 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
                       href={receipt.image_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group block rounded-xl overflow-hidden border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all"
+                      className="group block rounded-xl overflow-hidden border border-mist-200 hover:border-gold-400 hover:shadow-md transition-all"
                     >
                       <img
                         src={receipt.image_url}
