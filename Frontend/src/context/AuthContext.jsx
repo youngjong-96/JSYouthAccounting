@@ -7,12 +7,12 @@ const AuthContext = createContext(null);
    역할별 권한 매트릭스
    ───────────────────────────────────────── */
 const PERMISSIONS = {
-  master:     { summary: 'all',          detail: true,  expenseWrite: true,  expenseView: 'all',  users: true  },
-  accounting: { summary: 'all',          detail: true,  expenseWrite: true,  expenseView: 'all',  users: false },
-  mokbuhoe:   { summary: 'all',          detail: true,  expenseWrite: false, expenseView: 'all',  users: false },
-  juboteam:   { summary: 'heongeumOnly', detail: false, expenseWrite: false, expenseView: false,  users: false },
-  leader:     { summary: false,          detail: false, expenseWrite: true,  expenseView: 'own',  users: false },
-  pending:    { summary: false,          detail: false, expenseWrite: false, expenseView: false,  users: false },
+  master:     { summary: 'all',          detail: true,  expenseWrite: true,  expenseView: 'all',  users: true,  checkManage: true  },
+  accounting: { summary: 'all',          detail: true,  expenseWrite: true,  expenseView: 'all',  users: false, checkManage: true  },
+  mokbuhoe:   { summary: 'all',          detail: true,  expenseWrite: false, expenseView: 'all',  users: false, checkManage: false },
+  juboteam:   { summary: 'heongeumOnly', detail: false, expenseWrite: false, expenseView: false,  users: false, checkManage: false },
+  leader:     { summary: false,          detail: false, expenseWrite: true,  expenseView: 'own',  users: false, checkManage: false },
+  pending:    { summary: false,          detail: false, expenseWrite: false, expenseView: false,  users: false, checkManage: false },
 };
 
 export const getRoleLabel = (role) => ({
@@ -31,6 +31,7 @@ export const canViewDetail     = (role) => !!perm(role).detail;
 export const canWriteExpense   = (role) => perm(role).expenseWrite;
 export const canViewExpense    = (role) => !!perm(role).expenseView;
 export const canManageUsers    = (role) => perm(role).users;
+export const canManageChecks   = (role) => perm(role).checkManage;
 export const isHeongeumOnly    = (role) => perm(role).summary === 'heongeumOnly';
 export const isExpenseOwnOnly  = (role) => perm(role).expenseView === 'own';
 
@@ -59,7 +60,8 @@ export const AuthProvider = ({ children }) => {
         await supabase.auth.signOut();
         setUser(null); setToken(null);
       } else {
-        setUser({ ...supabaseUser, ...profile });
+        const merged = { ...supabaseUser, ...profile };
+        setUser(merged);
         setToken(accessToken);
       }
     } catch {
@@ -101,6 +103,7 @@ export const AuthProvider = ({ children }) => {
       canWriteExpense:  canWriteExpense(role),
       canViewExpense:   canViewExpense(role),
       canManageUsers:   canManageUsers(role),
+      canManageChecks:  canManageChecks(role),
       isHeongeumOnly:   isHeongeumOnly(role),
       isExpenseOwnOnly: isExpenseOwnOnly(role),
     }}>

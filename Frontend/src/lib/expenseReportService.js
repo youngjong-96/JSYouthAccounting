@@ -104,3 +104,25 @@ export async function deleteExpenseReport(id) {
 
   if (error) throw new Error(`삭제 실패: ${error.message}`);
 }
+
+/**
+ * 처리 체크 항목 업데이트
+ * @param {string} reportId
+ * @param {'director_confirmed'|'payment_completed'|'print_completed'} field
+ * @param {boolean} checked
+ * @param {string} userName  - 체크한 유저 이름
+ */
+export async function updateExpenseReportCheck(reportId, field, checked, userName) {
+  const updates = {
+    [field]: checked,
+    [`${field}_by`]: checked ? userName : null,
+  };
+
+  const { error } = await supabase
+    .from('expense_reports')
+    .update(updates)
+    .eq('id', reportId);
+
+  if (error) throw new Error(`체크 업데이트 실패: ${error.message}`);
+}
+
