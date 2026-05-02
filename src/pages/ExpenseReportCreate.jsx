@@ -35,6 +35,12 @@ function formatDateKorean(s) { if (!s) return ''; const [y,m,d] = s.split('-'); 
 const inputCls = "w-full px-3 py-2.5 bg-white border-2 border-mist-200 rounded-xl text-navy-500 placeholder-mist-300 focus:outline-none focus:border-gold-400 focus:ring-1 focus:ring-gold-400/30 transition-all text-[16px]";
 const labelCls = "block text-xs font-medium text-navy-400 mb-1.5 uppercase tracking-wider";
 
+const ACCOUNT_CATEGORIES = [
+  '식비', '간식비', '음료비', '나들이비', '선물지원비',
+  '심방비', '선교비', '지원비', '홍보비', '진행비',
+  '시상비', '강사사례비', '경조사비', '도서구입비', '유류비', '비품구입비',
+];
+
 /* ========================================= */
 const ExpenseReportCreate = () => {
   const navigate = useNavigate();
@@ -190,10 +196,16 @@ const ExpenseReportCreate = () => {
                 {items.map((item, idx) => (
                   <tr key={idx} className="hover:bg-cream-100/50 group">
                     <td className="px-2 py-2">
-                      <input type="text" value={item.account_category}
+                      <select
+                        value={item.account_category}
                         onChange={e => updateItem(idx,'account_category',e.target.value)}
-                        placeholder="간식비"
-                        className="w-full px-2 py-1.5 border border-mist-200 rounded-lg text-xs text-navy-500 placeholder-mist-300 focus:outline-none focus:border-gold-400 bg-white" />
+                        className="w-full px-2 py-1.5 border border-mist-200 rounded-lg text-xs text-navy-500 focus:outline-none focus:border-gold-400 bg-white appearance-none cursor-pointer"
+                      >
+                        <option value="">선택</option>
+                        {ACCOUNT_CATEGORIES.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-2 py-2">
                       <input type="text" value={item.description}
@@ -260,9 +272,16 @@ const ExpenseReportCreate = () => {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className={labelCls}>계정과목</label>
-                    <input type="text" value={item.account_category}
+                    <select
+                      value={item.account_category}
                       onChange={e => updateItem(idx,'account_category',e.target.value)}
-                      placeholder="간식비" className={inputCls} />
+                      className={`${inputCls} appearance-none cursor-pointer`}
+                    >
+                      <option value="">선택해주세요</option>
+                      {ACCOUNT_CATEGORIES.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className={labelCls}>월분</label>
