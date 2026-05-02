@@ -8,6 +8,9 @@ import ExpenseReportCreate from './pages/ExpenseReportCreate';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import UserManagementPage from './pages/UserManagementPage';
+import MyPage from './pages/MyPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ShieldOff } from 'lucide-react';
 
@@ -44,6 +47,8 @@ function App() {
           <Routes>
             <Route path="/login"    element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password"  element={<ResetPasswordPage />} />
             <Route
               path="/"
               element={
@@ -86,6 +91,9 @@ function App() {
                   <UserManagementPage />
                 </RoleRoute>
               } />
+
+              {/* 내 정보: 모든 역할 */}
+              <Route path="mypage" element={<MyPage />} />
             </Route>
           </Routes>
         </div>

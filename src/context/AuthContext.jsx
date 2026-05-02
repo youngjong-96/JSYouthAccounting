@@ -7,21 +7,24 @@ const AuthContext = createContext(null);
    역할별 권한 매트릭스
    ───────────────────────────────────────── */
 const PERMISSIONS = {
-  master:     { summary: 'all',          detail: true,  expenseWrite: true,  expenseView: 'all',  users: true,  checkManage: true  },
-  accounting: { summary: 'all',          detail: true,  expenseWrite: true,  expenseView: 'all',  users: false, checkManage: true  },
-  mokbuhoe:   { summary: 'all',          detail: true,  expenseWrite: false, expenseView: 'all',  users: false, checkManage: false },
-  juboteam:   { summary: 'heongeumOnly', detail: false, expenseWrite: false, expenseView: false,  users: false, checkManage: false },
-  leader:     { summary: false,          detail: false, expenseWrite: true,  expenseView: 'own',  users: false, checkManage: false },
-  pending:    { summary: false,          detail: false, expenseWrite: false, expenseView: false,  users: false, checkManage: false },
+  master:          { summary: 'all',          detail: true,  expenseWrite: true,  expenseView: 'all',  users: true,  checkManage: true  },
+  accounting:      { summary: 'all',          detail: true,  expenseWrite: true,  expenseView: 'all',  users: false, checkManage: true  },
+  mokbuhoe:        { summary: 'all',          detail: true,  expenseWrite: false, expenseView: 'all',  users: false, checkManage: false },
+  juboteam:        { summary: 'heongeumOnly', detail: false, expenseWrite: false, expenseView: false,  users: false, checkManage: false },
+  leader:          { summary: false,          detail: false, expenseWrite: true,  expenseView: 'own',  users: false, checkManage: false },
+  // juboteam + leader 합산: 헌금목록 요약보기 + 본인 결의서 작성/보기
+  leader_juboteam: { summary: 'heongeumOnly', detail: false, expenseWrite: true,  expenseView: 'own',  users: false, checkManage: false },
+  pending:         { summary: false,          detail: false, expenseWrite: false, expenseView: false,  users: false, checkManage: false },
 };
 
 export const getRoleLabel = (role) => ({
-  master:     '마스터',
-  accounting: '회계팀',
-  mokbuhoe:   '목부회',
-  juboteam:   '주보팀',
-  leader:     '청년부리더',
-  pending:    '승인대기',
+  master:          '마스터',
+  accounting:      '회계팀',
+  mokbuhoe:        '목부회',
+  juboteam:        '주보팀',
+  leader:          '청년부리더',
+  leader_juboteam: '청년부리더+주보팀',
+  pending:         '승인대기',
 }[role] || role || '-');
 
 const perm = (role) => PERMISSIONS[role] || PERMISSIONS.pending;

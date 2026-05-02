@@ -18,8 +18,9 @@ const Dashboard = () => {
   const location = useLocation();
 
   const isUserManagement = location.pathname === '/users';
-  const isExpensePage = location.pathname.startsWith('/expense');
-  const showFilter = !isUserManagement && !isExpensePage;
+  const isExpensePage    = location.pathname.startsWith('/expense');
+  const isMyPage         = location.pathname === '/mypage';
+  const showFilter       = !isUserManagement && !isExpensePage && !isMyPage;
 
   const fetchSummary = async () => {
     setLoading(true);
@@ -65,6 +66,7 @@ const Dashboard = () => {
                   {isExpensePage
                     ? location.pathname.includes('create') ? '지출결의서 작성' : '지출결의서 보기'
                     : isUserManagement ? '사용자 관리'
+                    : isMyPage ? '내 정보'
                     : '요약 보기'}
                 </span>
               </div>
