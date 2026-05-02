@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Upload, X, Save, Send, Loader2, ImageIcon, CheckCircle, ChevronLeft } from 'lucide-react';
+import { Plus, Trash2, Upload, X, Save, Send, Loader2, ImageIcon, CheckCircle, ChevronLeft, BookOpen } from 'lucide-react';
 import { createExpenseReport } from '../lib/expenseReportService';
 import { uploadReceipt } from '../lib/uploadReceipt';
+import guideImg from '../assets/guide.png';
 
 /* ── 한글 금액 변환 ── */
-const KOREAN_UNITS    = ['', '만', '억', '조'];
-const KOREAN_DIGITS   = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+const KOREAN_UNITS = ['', '만', '억', '조'];
+const KOREAN_DIGITS = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
 const KOREAN_SUBUNITS = ['', '십', '백', '천'];
 
 function numberToKorean(n) {
@@ -29,8 +30,8 @@ function numberToKorean(n) {
 }
 
 const emptyItem = () => ({ account_category: '', description: '', month_period: '', quantity: 1, unit_price: 0, amount: 0 });
-const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-function formatDateKorean(s) { if (!s) return ''; const [y,m,d] = s.split('-'); return `${y}년 ${parseInt(m)}월 ${parseInt(d)}일`; }
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function formatDateKorean(s) { if (!s) return ''; const [y, m, d] = s.split('-'); return `${y}년 ${parseInt(m)}월 ${parseInt(d)}일`; }
 
 const inputCls = "w-full px-3 py-2.5 bg-white border-2 border-mist-200 rounded-xl text-navy-500 placeholder-mist-300 focus:outline-none focus:border-gold-400 focus:ring-1 focus:ring-gold-400/30 transition-all text-[16px]";
 const labelCls = "block text-xs font-medium text-navy-400 mb-1.5 uppercase tracking-wider";
@@ -45,31 +46,32 @@ const ACCOUNT_CATEGORIES = [
 const ExpenseReportCreate = () => {
   const navigate = useNavigate();
   const [resolutionDate, setResolutionDate] = useState(todayStr());
-  const [bankAccount, setBankAccount]       = useState('');
-  const [claimDate, setClaimDate]           = useState(todayStr());
-  const [items, setItems]                   = useState([emptyItem()]);
-  const [receiptFiles, setReceiptFiles]     = useState([]);
+  const [bankAccount, setBankAccount] = useState('');
+  const [claimDate, setClaimDate] = useState(todayStr());
+  const [items, setItems] = useState([emptyItem()]);
+  const [receiptFiles, setReceiptFiles] = useState([]);
   const [receiptPreviews, setReceiptPreviews] = useState([]);
-  const [saving, setSaving]                 = useState(false);
-  const [successMsg, setSuccessMsg]         = useState('');
+  const [saving, setSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
 
   const updateItem = useCallback((idx, field, val) => {
     setItems(prev => {
       const copy = [...prev];
       copy[idx] = { ...copy[idx], [field]: val };
       if (field === 'quantity' || field === 'unit_price') {
-        const qty   = field === 'quantity'   ? Number(val)||0 : Number(copy[idx].quantity)||0;
-        const price = field === 'unit_price' ? Number(val)||0 : Number(copy[idx].unit_price)||0;
+        const qty = field === 'quantity' ? Number(val) || 0 : Number(copy[idx].quantity) || 0;
+        const price = field === 'unit_price' ? Number(val) || 0 : Number(copy[idx].unit_price) || 0;
         copy[idx].amount = qty * price;
       }
       return copy;
     });
   }, []);
 
-  const addItem    = () => setItems(p => [...p, emptyItem()]);
-  const removeItem = (i) => { if (items.length > 1) setItems(p => p.filter((_,j) => j !== i)); };
+  const addItem = () => setItems(p => [...p, emptyItem()]);
+  const removeItem = (i) => { if (items.length > 1) setItems(p => p.filter((_, j) => j !== i)); };
 
-  const totalAmount = items.reduce((s, item) => s + (Number(item.amount)||0), 0);
+  const totalAmount = items.reduce((s, item) => s + (Number(item.amount) || 0), 0);
   const totalKorean = totalAmount > 0 ? numberToKorean(totalAmount) + ' 원정' : '';
 
   const handleReceiptSelect = (e) => {
@@ -82,8 +84,8 @@ const ExpenseReportCreate = () => {
 
   const removeReceipt = (i) => {
     URL.revokeObjectURL(receiptPreviews[i].preview);
-    setReceiptFiles(p => p.filter((_,j) => j !== i));
-    setReceiptPreviews(p => p.filter((_,j) => j !== i));
+    setReceiptFiles(p => p.filter((_, j) => j !== i));
+    setReceiptPreviews(p => p.filter((_, j) => j !== i));
   };
 
   const validate = () => {
@@ -105,7 +107,7 @@ const ExpenseReportCreate = () => {
         ? await Promise.all(receiptFiles.map(f => uploadReceipt(f, tempId)))
         : [];
       await createExpenseReport(
-        { resolution_date: resolutionDate, total_amount: totalAmount, bank_account: bankAccount||null, claim_date: claimDate||null, status },
+        { resolution_date: resolutionDate, total_amount: totalAmount, bank_account: bankAccount || null, claim_date: claimDate || null, status },
         validItems, uploadedReceipts
       );
       setSuccessMsg(status === 'draft' ? '임시 저장되었습니다.' : '제출되었습니다.');
@@ -153,6 +155,16 @@ const ExpenseReportCreate = () => {
           </h2>
         </div>
 
+        {/* ── 가이드 버튼 ── */}
+        <button
+          type="button"
+          onClick={() => setShowGuide(true)}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-white border-2 border-dashed border-gold-300 hover:border-gold-400 hover:bg-gold-50 text-gold-600 hover:text-gold-700 font-semibold rounded-2xl transition-all text-sm"
+        >
+          <BookOpen className="w-4 h-4" />
+          지출결의서 작성 가이드 보기
+        </button>
+
         {/* ── 결의일자 ── */}
         <div className="bg-white rounded-2xl border border-mist-200 p-4">
           <label className={labelCls}>결의일자</label>
@@ -198,7 +210,7 @@ const ExpenseReportCreate = () => {
                     <td className="px-2 py-2">
                       <select
                         value={item.account_category}
-                        onChange={e => updateItem(idx,'account_category',e.target.value)}
+                        onChange={e => updateItem(idx, 'account_category', e.target.value)}
                         className="w-full px-2 py-1.5 border border-mist-200 rounded-lg text-xs text-navy-500 focus:outline-none focus:border-gold-400 bg-white appearance-none cursor-pointer"
                       >
                         <option value="">선택</option>
@@ -209,34 +221,34 @@ const ExpenseReportCreate = () => {
                     </td>
                     <td className="px-2 py-2">
                       <input type="text" value={item.description}
-                        onChange={e => updateItem(idx,'description',e.target.value)}
+                        onChange={e => updateItem(idx, 'description', e.target.value)}
                         placeholder="간식비 구입(3/5)"
                         className="w-full px-2 py-1.5 border border-mist-200 rounded-lg text-xs text-navy-500 placeholder-mist-300 focus:outline-none focus:border-gold-400 bg-white" />
                     </td>
                     <td className="px-2 py-2">
                       <input type="number" value={item.month_period}
-                        onChange={e => updateItem(idx,'month_period',e.target.value)}
+                        onChange={e => updateItem(idx, 'month_period', e.target.value)}
                         placeholder="3"
                         className="w-full px-2 py-1.5 border border-mist-200 rounded-lg text-xs text-center text-navy-500 focus:outline-none focus:border-gold-400 bg-white" />
                     </td>
                     <td className="px-2 py-2">
                       <input type="number" value={item.quantity} min="1"
-                        onChange={e => updateItem(idx,'quantity',e.target.value)}
+                        onChange={e => updateItem(idx, 'quantity', e.target.value)}
                         className="w-full px-2 py-1.5 border border-mist-200 rounded-lg text-xs text-center text-navy-500 focus:outline-none focus:border-gold-400 bg-white" />
                     </td>
                     <td className="px-2 py-2">
                       <input type="number" value={item.unit_price}
-                        onChange={e => updateItem(idx,'unit_price',e.target.value)}
+                        onChange={e => updateItem(idx, 'unit_price', e.target.value)}
                         placeholder="0"
                         className="w-full px-2 py-1.5 border border-mist-200 rounded-lg text-xs text-right text-navy-500 focus:outline-none focus:border-gold-400 bg-white" />
                     </td>
                     <td className="px-2 py-2">
                       <div className="px-2 py-1.5 bg-cream-100 rounded-lg text-xs text-right font-semibold text-navy-500 tabular-nums border border-mist-200">
-                        {(Number(item.amount)||0).toLocaleString()}
+                        {(Number(item.amount) || 0).toLocaleString()}
                       </div>
                     </td>
                     <td className="px-2 py-2 text-center">
-                      <button type="button" onClick={() => removeItem(idx)} disabled={items.length<=1}
+                      <button type="button" onClick={() => removeItem(idx)} disabled={items.length <= 1}
                         className="p-1.5 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition-all disabled:opacity-20 disabled:cursor-not-allowed">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -264,7 +276,7 @@ const ExpenseReportCreate = () => {
                   <span className="text-xs font-semibold text-gold-500 bg-gold-50 px-2.5 py-1 rounded-lg border border-gold-100">
                     항목 {idx + 1}
                   </span>
-                  <button type="button" onClick={() => removeItem(idx)} disabled={items.length<=1}
+                  <button type="button" onClick={() => removeItem(idx)} disabled={items.length <= 1}
                     className="p-2 bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-20 disabled:cursor-not-allowed">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -274,7 +286,7 @@ const ExpenseReportCreate = () => {
                     <label className={labelCls}>계정과목</label>
                     <select
                       value={item.account_category}
-                      onChange={e => updateItem(idx,'account_category',e.target.value)}
+                      onChange={e => updateItem(idx, 'account_category', e.target.value)}
                       className={`${inputCls} appearance-none cursor-pointer`}
                     >
                       <option value="">선택해주세요</option>
@@ -286,33 +298,33 @@ const ExpenseReportCreate = () => {
                   <div>
                     <label className={labelCls}>월분</label>
                     <input type="number" value={item.month_period}
-                      onChange={e => updateItem(idx,'month_period',e.target.value)}
+                      onChange={e => updateItem(idx, 'month_period', e.target.value)}
                       placeholder="3" className={`${inputCls} text-center`} />
                   </div>
                 </div>
                 <div>
                   <label className={labelCls}>적요</label>
                   <input type="text" value={item.description}
-                    onChange={e => updateItem(idx,'description',e.target.value)}
+                    onChange={e => updateItem(idx, 'description', e.target.value)}
                     placeholder="간식비 구입(3/5)" className={inputCls} />
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className={labelCls}>수량</label>
                     <input type="number" value={item.quantity} min="1"
-                      onChange={e => updateItem(idx,'quantity',e.target.value)}
+                      onChange={e => updateItem(idx, 'quantity', e.target.value)}
                       className={`${inputCls} text-center`} />
                   </div>
                   <div>
                     <label className={labelCls}>단가</label>
                     <input type="number" value={item.unit_price}
-                      onChange={e => updateItem(idx,'unit_price',e.target.value)}
+                      onChange={e => updateItem(idx, 'unit_price', e.target.value)}
                       placeholder="0" className={`${inputCls} text-right`} />
                   </div>
                   <div>
                     <label className={labelCls}>금액</label>
                     <div className="w-full px-3 py-2.5 bg-cream-100 border-2 border-mist-200 rounded-xl text-right font-semibold text-sm text-navy-500 tabular-nums">
-                      {(Number(item.amount)||0).toLocaleString()}
+                      {(Number(item.amount) || 0).toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -377,7 +389,7 @@ const ExpenseReportCreate = () => {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-3">
                 {receiptPreviews.map((item, idx) => (
                   <div key={idx} className="relative group rounded-xl overflow-hidden border border-mist-200">
-                    <img src={item.preview} alt={`영수증 ${idx+1}`} className="w-full h-28 object-cover" />
+                    <img src={item.preview} alt={`영수증 ${idx + 1}`} className="w-full h-28 object-cover" />
                     <button type="button" onClick={() => removeReceipt(idx)}
                       className="absolute top-1.5 right-1.5 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
                       <X className="w-3 h-3" />
@@ -418,6 +430,41 @@ const ExpenseReportCreate = () => {
           </button>
         </div>
       </div>
+      {/* ── 가이드 이미지 모달 ── */}
+      {showGuide && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowGuide(false)}
+        >
+          <div className="fixed inset-0 bg-navy-900/70 backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl overflow-hidden max-w-2xl w-full max-h-[90vh] flex flex-col animate-slideUp"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-mist-200 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-navy-400" />
+                <h3 className="text-sm font-bold text-navy-500">지출결의서 작성 가이드</h3>
+              </div>
+              <button
+                onClick={() => setShowGuide(false)}
+                className="p-1.5 text-mist-400 hover:text-navy-500 hover:bg-cream-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* 이미지 */}
+            <div className="overflow-y-auto flex-1">
+              <img
+                src={guideImg}
+                alt="지출결의서 작성 가이드"
+                className="w-full h-auto"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
