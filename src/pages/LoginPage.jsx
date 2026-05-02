@@ -117,9 +117,14 @@ const LoginPage = () => {
 
             {/* 비밀번호 */}
             <div>
-              <label className="block text-xs font-medium text-navy-400 mb-2 uppercase tracking-wider">
-                비밀번호
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-medium text-navy-400 uppercase tracking-wider">
+                  비밀번호
+                </label>
+                <Link to="/forgot-password" className="text-xs text-gold-500 hover:text-gold-600 transition-colors font-medium">
+                  비밀번호 찾기
+                </Link>
+              </div>
               <div className="relative">
                 <input
                   id="login-password"

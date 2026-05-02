@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FileText, Receipt, FilePlus, X, Users } from 'lucide-react';
+import { LayoutDashboard, FileText, Receipt, FilePlus, X, Users, UserCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import logoWhite from '../assets/logo_white.png';
 
@@ -46,6 +46,12 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       path: '/users',
       icon: <Users className="w-5 h-5" />,
       show: canManageUsers,
+    },
+    {
+      name: '내 정보',
+      path: '/mypage',
+      icon: <UserCircle className="w-5 h-5" />,
+      show: true, // 모든 역할
     },
   ];
 
