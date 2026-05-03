@@ -1,9 +1,23 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FileText, Receipt, FilePlus, X, Users, UserCircle } from 'lucide-react';
+import {
+  FilePlus,
+  FileText,
+  LayoutDashboard,
+  Receipt,
+  UserCircle,
+  Users,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getRoleLabel } from '../context/authPermissions';
 import logoWhite from '../assets/logo_white.png';
 
+/**
+ * 현재 권한에 맞는 메뉴와 사용자 정보를 사이드바에 표시합니다.
+ * @param {{ isOpen: boolean, toggleSidebar: () => void }} props
+ * @returns {JSX.Element}
+ */
 const Sidebar = ({ isOpen, toggleSidebar }) => {
   const {
     user,
@@ -29,7 +43,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       show: canViewDetail,
     },
     {
-      name: '지출결의서 작성하기',
+      name: '지출결의서 작성',
       path: '/expense/create',
       icon: <FilePlus className="w-5 h-5" />,
       show: canWriteExpense,
@@ -51,15 +65,14 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       name: '내 정보',
       path: '/mypage',
       icon: <UserCircle className="w-5 h-5" />,
-      show: true, // 모든 역할
+      show: true,
     },
   ];
 
-  const menuItems = allMenuItems.filter(item => item.show);
+  const menuItems = allMenuItems.filter((item) => item.show);
 
   return (
     <>
-      {/* 모바일 백드롭 */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-navy-900/60 backdrop-blur-sm z-40 md:hidden"
@@ -67,13 +80,11 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         />
       )}
 
-      {/* 사이드바 */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-navy-500 flex flex-col transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full md:hidden'
         }`}
       >
-        {/* 헤더 */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <img src={logoWhite} alt="JSYouth" className="h-8 w-auto object-contain" />
           <button
@@ -84,40 +95,36 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           </button>
         </div>
 
-        {/* 사용자 정보 */}
         {user && (
           <div className="px-5 py-3 border-b border-white/10">
             <p className="text-xs text-white/40 font-light">로그인 계정</p>
             <p className="text-sm text-white/90 font-medium truncate mt-0.5">{user.name}</p>
             {user.role && (
               <p className="text-xs text-gold-300/70 mt-0.5">
-                {{
-                  master:     '마스터',
-                  accounting: '회계팀',
-                  mokbuhoe:   '목부회',
-                  juboteam:   '주보팀',
-                  leader:     '청년부리더',
-                }[user.role] || user.role}
+                {getRoleLabel(user.role)}
               </p>
             )}
           </div>
         )}
 
-        {/* 메뉴 */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {menuItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               end={item.exact}
-              onClick={() => { if (window.innerWidth < 768) toggleSidebar(); }}
-              className={({ isActive }) =>
+              onClick={() => {
+                if (window.innerWidth < 768) {
+                  toggleSidebar();
+                }
+              }}
+              className={({ isActive }) => (
                 `flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all ${
                   isActive
                     ? 'bg-gold-400 text-navy-700 shadow-md shadow-gold-400/30'
                     : 'text-white/70 hover:bg-white/10 hover:text-white'
                 }`
-              }
+              )}
             >
               {item.icon}
               {item.name}
@@ -125,7 +132,6 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           ))}
         </nav>
 
-        {/* 하단 */}
         <div className="px-5 py-3 border-t border-white/10">
           <p className="text-xs text-white/30">JSYouth 회계시스템</p>
         </div>
