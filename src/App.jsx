@@ -78,6 +78,12 @@ function App() {
                 </RoleRoute>
               } />
 
+              <Route path="expense/create/:reportId" element={
+                <RoleRoute allowed={['master', 'accounting', 'leader']}>
+                  <ExpenseReportCreate />
+                </RoleRoute>
+              } />
+
               {/* 지출결의서 보기: master/accounting/mokbuhoe/leader */}
               <Route path="expense" element={
                 <RoleRoute allowed={['master', 'accounting', 'mokbuhoe', 'leader']}>
