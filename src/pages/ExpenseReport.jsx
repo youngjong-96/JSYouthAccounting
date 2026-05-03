@@ -59,11 +59,6 @@ function isDraftReportStatus(status) {
  * @param {string | null | undefined} status
  * @returns {boolean}
  */
-function isFinalizedReportStatus(status) {
-  const normalizedStatus = normalizeReportStatus(status);
-  return normalizedStatus === 'submitted' || normalizedStatus === 'approved';
-}
-
 /**
  * 현재 사용자에게 목록에서 보여줘야 하는 문서인지 판별합니다.
  * 제출된 문서는 모두 보여주고, 초안은 작성자 본인에게만 보여줍니다.
@@ -71,8 +66,8 @@ function isFinalizedReportStatus(status) {
  * @param {string | undefined} userId
  * @returns {boolean}
  */
-function canViewReportInList(report, userId) {
-  if (isFinalizedReportStatus(report?.status)) {
+function canViewReportInList(report, userId, ownOnly) {
+  if (!ownOnly) {
     return true;
   }
 
@@ -182,7 +177,7 @@ const ExpenseReport = () => {
   });
 
   /* 현재 사용자 기준으로 실제 목록에 보여줄 문서만 추립니다. */
-  const visibleReports = reports.filter((report) => canViewReportInList(report, user?.id));
+  const visibleReports = reports.filter((report) => canViewReportInList(report, user?.id, isExpenseOwnOnly));
 
   /* 체크 필터까지 적용된 최종 목록을 계산합니다. */
   const filteredReports = visibleReports.filter((report) => (
@@ -241,7 +236,10 @@ const ExpenseReport = () => {
     setDetailLoading(true);
 
     try {
-      const report = await getExpenseReport(reportId, { currentUserId: user?.id });
+      const report = await getExpenseReport(reportId, {
+        currentUserId: user?.id,
+        ownOnly: isExpenseOwnOnly,
+      });
       setSelectedReport(report);
       setShowDetail(true);
     } catch (viewError) {

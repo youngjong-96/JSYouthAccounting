@@ -239,7 +239,7 @@ export async function updateExpenseReport(reportId, reportData, items = [], rece
 
 /**
  * 지출결의서 목록을 조회합니다.
- * 임시저장 문서는 작성자 본인에게만 노출합니다.
+ * 역할 권한이 전체 조회이면 모든 문서를, 본인 조회이면 본인 문서만 반환합니다.
  * @param {{ ownOnly?: boolean, currentUserId?: string | null }} options
  * @returns {Promise<Array<object>>}
  */
@@ -265,24 +265,22 @@ export async function getExpenseReports(options = {}) {
     throw new Error(`목록 조회 실패: ${error.message}`);
   }
 
-  return (data || []).filter((report) => {
-    if (isFinalizedReportStatus(report.status)) {
-      return true;
-    }
+  if (!ownOnly) {
+    return data || [];
+  }
 
-    return report.user_id === viewer?.id;
-  });
+  return (data || []).filter((report) => report.user_id === viewer?.id);
 }
 
 /**
  * 지출결의서 상세를 조회합니다.
- * 임시저장 문서는 작성자 본인만 열람할 수 있습니다.
+ * 역할 권한이 본인 조회이면 본인 문서만, 전체 조회이면 모든 문서를 열 수 있습니다.
  * @param {string} id
- * @param {{ currentUserId?: string | null }} options
+ * @param {{ currentUserId?: string | null, ownOnly?: boolean }} options
  * @returns {Promise<object>}
  */
 export async function getExpenseReport(id, options = {}) {
-  const { currentUserId = null } = options;
+  const { currentUserId = null, ownOnly = false } = options;
   const viewer = currentUserId ? { id: currentUserId } : await getCurrentUser({ required: false });
 
   const { data, error } = await supabase
@@ -299,8 +297,8 @@ export async function getExpenseReport(id, options = {}) {
     throw new Error(`상세 조회 실패: ${error.message}`);
   }
 
-  if (!isFinalizedReportStatus(data.status) && data.user_id !== viewer?.id) {
-    throw new Error('임시저장 문서는 작성자만 볼 수 있습니다.');
+  if (ownOnly && data.user_id !== viewer?.id) {
+    throw new Error('본인 문서만 볼 수 있습니다.');
   }
 
   return data;
