@@ -23,7 +23,7 @@ const SummaryView = () => {
   const cumulativeExpense = data?.cumulative_expense_total ?? 0;
   const balance = carryover + cumulativeIncome - cumulativeExpense;
 
-  /* ── 주보팀 전용: 헌금명단만 표시 ── */
+  /* 헌금 명단만 별도로 보여주는 요약 분기입니다. */
   if (isHeongeumOnly) {
     if (!data?.contributors) {
       return (

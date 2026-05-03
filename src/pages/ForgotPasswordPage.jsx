@@ -3,12 +3,21 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Mail, Loader2, CheckCircle2, ChevronLeft, ArrowRight } from 'lucide-react';
 
+/**
+ * 비밀번호 재설정 메일 발송 화면을 렌더링합니다.
+ * @returns {JSX.Element}
+ */
 const ForgotPasswordPage = () => {
   const [email, setEmail]       = useState('');
   const [loading, setLoading]   = useState(false);
   const [sent, setSent]         = useState(false);
   const [error, setError]       = useState('');
 
+  /**
+   * 입력한 이메일로 비밀번호 재설정 메일을 발송합니다.
+   * @param {React.FormEvent<HTMLFormElement>} e
+   * @returns {Promise<void>}
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -19,7 +28,7 @@ const ForgotPasswordPage = () => {
       });
       if (err) throw err;
       setSent(true);
-    } catch (e) {
+    } catch {
       setError('이메일 발송에 실패했습니다. 이메일 주소를 확인해주세요.');
     } finally {
       setLoading(false);
