@@ -2,6 +2,11 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
 
+/**
+ * 월간 보고서 미리보기와 인쇄 레이아웃을 렌더링합니다.
+ * @param {{ onClose: () => void, data: object, year: number, month: number }} props
+ * @returns {JSX.Element | null}
+ */
 const MonthlyReportModal = ({ onClose, data, year, month }) => {
   if (!data) return null;
 
@@ -112,6 +117,10 @@ const MonthlyReportModal = ({ onClose, data, year, month }) => {
     });
   }
 
+  /**
+   * 인쇄 전에 화면을 상단으로 이동한 뒤 브라우저 인쇄를 실행합니다.
+   * @returns {void}
+   */
   const handlePrint = () => {
     window.scrollTo(0, 0);
     setTimeout(() => {
@@ -120,6 +129,13 @@ const MonthlyReportModal = ({ onClose, data, year, month }) => {
   };
 
   // Helper row renderer
+  /**
+   * 재정 테이블의 공통 데이터 행을 렌더링합니다.
+   * @param {string} label
+   * @param {number[]} dataArray
+   * @param {boolean} highlight
+   * @returns {JSX.Element}
+   */
   const renderDataRow = (label, dataArray, highlight = false) => {
     const total = dataArray.reduce((src, val) => src + val, 0);
     return (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { useAuth, getRoleLabel } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { Users, Loader2, ChevronDown, Trash2 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -15,6 +15,11 @@ const ROLES = [
   { value: 'master',          label: '마스터',            cls: 'bg-gold-50 text-gold-700 border-gold-200' },
 ];
 
+/**
+ * 사용자 역할을 뱃지 형태로 표시합니다.
+ * @param {{ role: string }} props
+ * @returns {JSX.Element}
+ */
 function RoleBadge({ role }) {
   const r = ROLES.find(r => r.value === role) || ROLES[0];
   return (
@@ -24,6 +29,10 @@ function RoleBadge({ role }) {
   );
 }
 
+/**
+ * 사용자 목록 조회와 역할 변경, 삭제 기능을 제공합니다.
+ * @returns {JSX.Element}
+ */
 const UserManagementPage = () => {
   const [users, setUsers]         = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -33,6 +42,10 @@ const UserManagementPage = () => {
 
   useEffect(() => { fetchUsers(); }, []);
 
+  /**
+   * 등록된 사용자 프로필 목록을 최신순으로 조회합니다.
+   * @returns {Promise<void>}
+   */
   const fetchUsers = async () => {
     try {
       const { data, error } = await supabase
@@ -41,24 +54,34 @@ const UserManagementPage = () => {
         .order('created_at', { ascending: false });
       if (error) throw error;
       setUsers(data || []);
-    } catch (e) {
+    } catch {
       alert('사용자 목록을 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * 선택한 사용자의 역할과 승인 상태를 함께 갱신합니다.
+   * @param {string} userId
+   * @param {string} newRole
+   * @returns {Promise<void>}
+   */
   const handleRoleChange = async (userId, newRole) => {
     const updates = { role: newRole, is_approved: newRole !== 'pending' };
     try {
       const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
       if (error) throw error;
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
-    } catch (e) {
+    } catch {
       alert('권한 변경에 실패했습니다.');
     }
   };
 
+  /**
+   * 선택된 사용자를 서버 API를 통해 삭제합니다.
+   * @returns {Promise<void>}
+   */
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);

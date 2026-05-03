@@ -5,6 +5,10 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
+/**
+ * 로그인 화면을 렌더링하고 인증 절차를 처리합니다.
+ * @returns {JSX.Element}
+ */
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,8 +23,13 @@ const LoginPage = () => {
     if (isAuthenticated) {
       navigate('/', { replace: true });
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, navigate]);
 
+  /**
+   * 이메일과 비밀번호로 로그인을 시도합니다.
+   * @param {React.FormEvent<HTMLFormElement>} e
+   * @returns {Promise<void>}
+   */
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
