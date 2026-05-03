@@ -21,11 +21,12 @@ import {
 import ExpenseReportDetailModal from '../components/ExpenseReportDetailModal';
 import { useAuth } from '../context/AuthContext';
 
-/* 상태별 라벨과 스타일을 정의합니다. */
+/* 지출결의서 상태별 라벨과 색상을 정의합니다. */
 const statusMap = {
   draft: { label: '임시저장', cls: 'bg-gold-50 text-gold-600 border-gold-200' },
   submitted: { label: '제출완료', cls: 'bg-green-50 text-green-700 border-green-200' },
   approved: { label: '승인완료', cls: 'bg-navy-50 text-navy-600 border-navy-200' },
+  unknown: { label: '상태 확인 필요', cls: 'bg-red-50 text-red-600 border-red-200' },
 };
 
 /* 처리 체크 항목 목록을 정의합니다. */
@@ -36,11 +37,6 @@ const CHECK_FIELDS = [
 ];
 
 /**
- * 결의서 상태 배지를 렌더링합니다.
- * @param {{ status: string }} props
- * @returns {JSX.Element}
- */
-/**
  * 결의서 상태값을 비교용 문자열로 정규화합니다.
  * @param {string | null | undefined} status
  * @returns {string}
@@ -50,7 +46,7 @@ function normalizeReportStatus(status) {
 }
 
 /**
- * 수정 가능한 초안 상태인지 판별합니다.
+ * 현재 문서가 수정 가능한 초안 상태인지 판별합니다.
  * @param {string | null | undefined} status
  * @returns {boolean}
  */
@@ -59,12 +55,37 @@ function isDraftReportStatus(status) {
 }
 
 /**
+ * 현재 문서가 최종 제출 완료 상태인지 판별합니다.
+ * @param {string | null | undefined} status
+ * @returns {boolean}
+ */
+function isFinalizedReportStatus(status) {
+  const normalizedStatus = normalizeReportStatus(status);
+  return normalizedStatus === 'submitted' || normalizedStatus === 'approved';
+}
+
+/**
+ * 현재 사용자에게 목록에서 보여줘야 하는 문서인지 판별합니다.
+ * 제출된 문서는 모두 보여주고, 초안은 작성자 본인에게만 보여줍니다.
+ * @param {object} report
+ * @param {string | undefined} userId
+ * @returns {boolean}
+ */
+function canViewReportInList(report, userId) {
+  if (isFinalizedReportStatus(report?.status)) {
+    return true;
+  }
+
+  return report?.user_id === userId;
+}
+
+/**
  * 결의서 상태 배지를 렌더링합니다.
- * @param {{ status: string }} props
+ * @param {{ status: string | null | undefined }} props
  * @returns {JSX.Element}
  */
 function StatusBadge({ status }) {
-  const currentStatus = statusMap[normalizeReportStatus(status)] || statusMap.draft;
+  const currentStatus = statusMap[normalizeReportStatus(status)] || statusMap.unknown;
 
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-semibold rounded-full border ${currentStatus.cls}`}>
@@ -74,8 +95,8 @@ function StatusBadge({ status }) {
 }
 
 /**
- * 날짜 문자열을 목록용 형식으로 변환합니다.
- * @param {string | null} dateStr
+ * 날짜 문자열을 목록용 표시 형식으로 변환합니다.
+ * @param {string | null | undefined} dateStr
  * @returns {string}
  */
 function formatDate(dateStr) {
@@ -88,7 +109,7 @@ function formatDate(dateStr) {
 }
 
 /**
- * 현재 사용자가 다시 수정할 수 있는 임시저장 문서인지 확인합니다.
+ * 현재 사용자가 수정 버튼을 볼 수 있는 문서인지 판별합니다.
  * @param {object} report
  * @param {string | undefined} userId
  * @returns {boolean}
@@ -138,7 +159,10 @@ function CheckItem({ label, checked, checkedBy, canEdit, onToggle, updating }) {
   );
 }
 
-/* ========================================= */
+/**
+ * 지출결의서 목록, 상세, 삭제, 초안 수정 진입 기능을 제공합니다.
+ * @returns {JSX.Element}
+ */
 const ExpenseReport = () => {
   const navigate = useNavigate();
   const { user, canManageChecks, isExpenseOwnOnly } = useAuth();
@@ -157,8 +181,11 @@ const ExpenseReport = () => {
     print_completed: 'all',
   });
 
-  /* 체크 필터를 적용한 목록을 계산합니다. */
-  const filteredReports = reports.filter((report) => (
+  /* 현재 사용자 기준으로 실제 목록에 보여줄 문서만 추립니다. */
+  const visibleReports = reports.filter((report) => canViewReportInList(report, user?.id));
+
+  /* 체크 필터까지 적용된 최종 목록을 계산합니다. */
+  const filteredReports = visibleReports.filter((report) => (
     CHECK_FIELDS.every(({ field }) => {
       const filterValue = filters[field];
 
@@ -177,7 +204,7 @@ const ExpenseReport = () => {
   const hasActiveFilter = Object.values(filters).some((value) => value !== 'all');
 
   /**
-   * 지출결의서 목록을 불러옵니다.
+   * 지출결의서 목록을 조회합니다.
    * @returns {Promise<void>}
    */
   const fetchReports = useCallback(async () => {
@@ -225,7 +252,7 @@ const ExpenseReport = () => {
   };
 
   /**
-   * 임시저장 결의서를 다시 작성 화면으로 이동시킵니다.
+   * 임시저장 문서를 수정 화면으로 이동시킵니다.
    * @param {string} reportId
    * @returns {void}
    */
@@ -234,7 +261,7 @@ const ExpenseReport = () => {
   };
 
   /**
-   * 결의서를 삭제합니다.
+   * 결의서를 삭제한 뒤 목록을 새로고침합니다.
    * @param {string} reportId
    * @returns {Promise<void>}
    */
@@ -249,7 +276,7 @@ const ExpenseReport = () => {
   };
 
   /**
-   * 처리 체크 상태를 토글합니다.
+   * 처리 체크 상태를 토글하고 실패 시 원상복구합니다.
    * @param {string} reportId
    * @param {string} field
    * @param {boolean} currentValue
@@ -316,7 +343,7 @@ const ExpenseReport = () => {
           </div>
           <div>
             <h2 className="text-base font-bold text-navy-500">지출결의서 보기</h2>
-            <p className="text-xs text-mist-500">총 {reports.length}건</p>
+            <p className="text-xs text-mist-500">총 {visibleReports.length}건</p>
           </div>
         </div>
         <button
@@ -372,7 +399,7 @@ const ExpenseReport = () => {
         </div>
       </div>
 
-      {reports.length === 0 ? (
+      {visibleReports.length === 0 ? (
         <div className="bg-white rounded-2xl border border-mist-200 p-14 text-center">
           <div className="w-16 h-16 bg-cream-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <FileText className="w-8 h-8 text-mist-300" />
