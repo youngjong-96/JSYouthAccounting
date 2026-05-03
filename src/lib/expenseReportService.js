@@ -20,17 +20,39 @@ async function getCurrentUser(options = {}) {
 }
 
 /**
+ * 결의서 상태값을 소문자 문자열로 정규화합니다.
+ * @param {string | null | undefined} status
+ * @returns {string}
+ */
+function normalizeReportStatus(status) {
+  return typeof status === 'string' ? status.trim().toLowerCase() : '';
+}
+
+/**
+ * 제출이 끝난 최종 상태인지 판별합니다.
+ * 알 수 없는 상태값은 안전하게 초안처럼 취급합니다.
+ * @param {string | null | undefined} status
+ * @returns {boolean}
+ */
+function isFinalizedReportStatus(status) {
+  const normalizedStatus = normalizeReportStatus(status);
+  return normalizedStatus === 'submitted' || normalizedStatus === 'approved';
+}
+
+/**
  * 지출결의서 공통 저장 필드를 정리합니다.
  * @param {object} reportData
  * @returns {object}
  */
 function prepareReportPayload(reportData) {
+  const normalizedStatus = normalizeReportStatus(reportData.status);
+
   return {
     resolution_date: reportData.resolution_date || null,
     total_amount: Number(reportData.total_amount) || 0,
     bank_account: reportData.bank_account || null,
     claim_date: reportData.claim_date || null,
-    status: reportData.status || 'draft',
+    status: isFinalizedReportStatus(normalizedStatus) ? normalizedStatus : 'draft',
   };
 }
 
@@ -194,7 +216,7 @@ export async function updateExpenseReport(reportId, reportData, items = [], rece
     throw new Error('본인이 작성한 결의서만 수정할 수 있습니다.');
   }
 
-  if (currentReport.status !== 'draft') {
+  if (isFinalizedReportStatus(currentReport.status)) {
     throw new Error('임시저장 상태의 결의서만 수정할 수 있습니다.');
   }
 
@@ -244,7 +266,7 @@ export async function getExpenseReports(options = {}) {
   }
 
   return (data || []).filter((report) => {
-    if (report.status !== 'draft') {
+    if (isFinalizedReportStatus(report.status)) {
       return true;
     }
 
@@ -277,7 +299,7 @@ export async function getExpenseReport(id, options = {}) {
     throw new Error(`상세 조회 실패: ${error.message}`);
   }
 
-  if (data.status === 'draft' && data.user_id !== viewer?.id) {
+  if (!isFinalizedReportStatus(data.status) && data.user_id !== viewer?.id) {
     throw new Error('임시저장 문서는 작성자만 볼 수 있습니다.');
   }
 

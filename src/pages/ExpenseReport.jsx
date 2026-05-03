@@ -40,8 +40,31 @@ const CHECK_FIELDS = [
  * @param {{ status: string }} props
  * @returns {JSX.Element}
  */
+/**
+ * 결의서 상태값을 비교용 문자열로 정규화합니다.
+ * @param {string | null | undefined} status
+ * @returns {string}
+ */
+function normalizeReportStatus(status) {
+  return typeof status === 'string' ? status.trim().toLowerCase() : '';
+}
+
+/**
+ * 수정 가능한 초안 상태인지 판별합니다.
+ * @param {string | null | undefined} status
+ * @returns {boolean}
+ */
+function isDraftReportStatus(status) {
+  return normalizeReportStatus(status) === 'draft';
+}
+
+/**
+ * 결의서 상태 배지를 렌더링합니다.
+ * @param {{ status: string }} props
+ * @returns {JSX.Element}
+ */
 function StatusBadge({ status }) {
-  const currentStatus = statusMap[status] || statusMap.draft;
+  const currentStatus = statusMap[normalizeReportStatus(status)] || statusMap.draft;
 
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-semibold rounded-full border ${currentStatus.cls}`}>
@@ -71,7 +94,7 @@ function formatDate(dateStr) {
  * @returns {boolean}
  */
 function canEditDraftReport(report, userId) {
-  return report?.status === 'draft' && report?.user_id === userId;
+  return isDraftReportStatus(report?.status) && report?.user_id === userId;
 }
 
 /**
