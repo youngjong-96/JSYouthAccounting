@@ -7,6 +7,7 @@ import DetailView from './pages/DetailView';
 import ExpenseReport from './pages/ExpenseReport';
 import ExpenseReportCreate from './pages/ExpenseReportCreate';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import FreeBoardPage from './pages/FreeBoardPage';
 import LoginPage from './pages/LoginPage';
 import MyPage from './pages/MyPage';
 import RegisterPage from './pages/RegisterPage';
@@ -66,6 +67,7 @@ const PermissionRoute = ({ children, allowed }) => {
 const AppRoutes = () => {
   const {
     canManageUsers,
+    canUseBoard,
     canViewDetail,
     canViewExpense,
     canViewSummary,
@@ -127,6 +129,15 @@ const AppRoutes = () => {
           element={(
             <PermissionRoute allowed={canViewExpense}>
               <ExpenseReport />
+            </PermissionRoute>
+          )}
+        />
+
+        <Route
+          path="board"
+          element={(
+            <PermissionRoute allowed={canUseBoard}>
+              <FreeBoardPage />
             </PermissionRoute>
           )}
         />

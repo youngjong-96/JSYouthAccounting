@@ -104,6 +104,15 @@ function formatDate(dateStr) {
 }
 
 /**
+ * 지출결의서 데이터에서 목록 표시용 작성자 이름을 추출합니다.
+ * @param {object} report
+ * @returns {string}
+ */
+function getReportAuthorName(report) {
+  return report?.author_name || '작성자 미상';
+}
+
+/**
  * 현재 사용자가 수정 버튼을 볼 수 있는 문서인지 판별합니다.
  * @param {object} report
  * @param {string | undefined} userId
@@ -446,7 +455,13 @@ const ExpenseReport = () => {
                   return (
                     <tr key={report.id} className="hover:bg-cream-100/60 transition-colors group">
                       <td className="px-4 py-3.5 text-xs text-mist-400">{filteredReports.length - index}</td>
-                      <td className="px-4 py-3.5 text-sm font-medium text-navy-500">{formatDate(report.resolution_date)}</td>
+                      <td className="px-4 py-3.5 text-sm text-navy-500">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{formatDate(report.resolution_date)}</span>
+                          <span className="text-xs text-mist-400">|</span>
+                          <span className="text-xs font-medium text-mist-500">{getReportAuthorName(report)}</span>
+                        </div>
+                      </td>
                       <td className="px-4 py-3.5 text-right font-bold text-navy-500 tabular-nums text-sm">
                         {(report.total_amount || 0).toLocaleString()}원
                       </td>
@@ -523,7 +538,11 @@ const ExpenseReport = () => {
                       <StatusBadge status={report.status} />
                     </div>
                     <div className="flex items-baseline justify-between mb-1.5">
-                      <span className="text-sm font-medium text-navy-400">{formatDate(report.resolution_date)}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium text-navy-400">{formatDate(report.resolution_date)}</span>
+                        <span className="text-[11px] text-mist-300">|</span>
+                        <span className="truncate text-xs font-medium text-mist-500">{getReportAuthorName(report)}</span>
+                      </div>
                       <span className="text-lg font-bold text-navy-500 tabular-nums">
                         {(report.total_amount || 0).toLocaleString()}원
                       </span>
