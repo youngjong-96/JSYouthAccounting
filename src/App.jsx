@@ -1,4 +1,6 @@
 import React from 'react';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 import { ShieldOff } from 'lucide-react';
 import Dashboard from './components/Dashboard';
@@ -167,6 +169,8 @@ function App() {
       <Router>
         <div className="App">
           <AppRoutes />
+          <Analytics />
+          <SpeedInsights />
         </div>
       </Router>
     </AuthProvider>

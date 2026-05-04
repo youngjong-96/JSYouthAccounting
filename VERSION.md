@@ -26,3 +26,8 @@
 - 자유게시판 메뉴 추가 및 승인된 전체 사용자 대상 게시글 조회/작성 기능 도입
 - 자유게시판 게시글 상세 보기와 본인 글 수정/삭제, 마스터의 전체 글 삭제 권한 추가
 - Supabase 자유게시판 테이블과 RLS 정책 스크립트 추가
+
+## v1.1.1
+
+- Vercel Web Analytics 패키지 설치 및 전역 Analytics 컴포넌트 연결
+- Vercel Speed Insights 패키지 설치 및 전역 SpeedInsights 컴포넌트 연결
