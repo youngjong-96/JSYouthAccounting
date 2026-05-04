@@ -9,11 +9,11 @@ export const ROLE_OPTIONS = [
 
 /* 역할별 권한 매트릭스를 정의합니다. */
 const PERMISSIONS = {
-  master: { summary: 'all', detail: true, expenseWrite: true, expenseView: 'all', users: true, checkManage: true },
-  accounting: { summary: 'all', detail: true, expenseWrite: true, expenseView: 'all', users: false, checkManage: true },
-  leader: { summary: false, detail: false, expenseWrite: true, expenseView: 'own', users: false, checkManage: false },
-  leader_juboteam: { summary: 'heongeumOnly', detail: false, expenseWrite: true, expenseView: 'own', users: false, checkManage: false },
-  pending: { summary: false, detail: false, expenseWrite: false, expenseView: false, users: false, checkManage: false },
+  master: { summary: 'all', detail: true, expenseWrite: true, expenseView: 'all', users: true, checkManage: true, board: true },
+  accounting: { summary: 'all', detail: true, expenseWrite: true, expenseView: 'all', users: false, checkManage: true, board: true },
+  leader: { summary: false, detail: false, expenseWrite: true, expenseView: 'own', users: false, checkManage: false, board: true },
+  leader_juboteam: { summary: 'heongeumOnly', detail: false, expenseWrite: true, expenseView: 'own', users: false, checkManage: false, board: true },
+  pending: { summary: false, detail: false, expenseWrite: false, expenseView: false, users: false, checkManage: false, board: false },
 };
 
 /* 역할 코드를 화면 표시용 이름으로 빠르게 찾기 위한 맵입니다. */
@@ -90,6 +90,15 @@ export function canManageUsers(role) {
  */
 export function canManageChecks(role) {
   return getPermission(role).checkManage;
+}
+
+/**
+ * 자유게시판 접근 권한이 있는지 확인합니다.
+ * @param {string | undefined} role
+ * @returns {boolean}
+ */
+export function canUseBoard(role) {
+  return !!getPermission(role).board;
 }
 
 /**

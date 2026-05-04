@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
+  canUseBoard,
   canManageChecks,
   canManageUsers,
   canViewDetail,
@@ -108,6 +109,7 @@ export const AuthProvider = ({ children }) => {
         canViewDetail: canViewDetail(role),
         canWriteExpense: canWriteExpense(role),
         canViewExpense: canViewExpense(role),
+        canUseBoard: canUseBoard(role),
         canManageUsers: canManageUsers(role),
         canManageChecks: canManageChecks(role),
         isHeongeumOnly: isHeongeumOnly(role),

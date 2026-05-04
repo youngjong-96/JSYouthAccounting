@@ -23,8 +23,9 @@ const Dashboard = () => {
 
   const isUserManagement = location.pathname === '/users';
   const isExpensePage = location.pathname.startsWith('/expense');
+  const isBoardPage = location.pathname.startsWith('/board');
   const isMyPage = location.pathname === '/mypage';
-  const showFilter = !isUserManagement && !isExpensePage && !isMyPage;
+  const showFilter = !isUserManagement && !isExpensePage && !isBoardPage && !isMyPage;
 
   /**
    * 선택한 기간 기준으로 재정 요약 데이터를 조회합니다.
@@ -73,6 +74,7 @@ const Dashboard = () => {
                   {isExpensePage
                     ? location.pathname.includes('create') ? '지출결의서 작성' : '지출결의서 보기'
                     : isUserManagement ? '사용자 관리'
+                    : isBoardPage ? '자유게시판'
                     : isMyPage ? '내 정보'
                     : '요약 보기'}
                 </span>

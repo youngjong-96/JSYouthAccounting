@@ -4,6 +4,7 @@ import {
   FilePlus,
   FileText,
   LayoutDashboard,
+  MessageSquare,
   Receipt,
   UserCircle,
   Users,
@@ -25,6 +26,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     canViewDetail,
     canWriteExpense,
     canViewExpense,
+    canUseBoard,
     canManageUsers,
   } = useAuth();
 
@@ -54,6 +56,13 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       icon: <Receipt className="w-5 h-5" />,
       exact: true,
       show: canViewExpense,
+    },
+    {
+      name: '자유게시판',
+      path: '/board',
+      icon: <MessageSquare className="w-5 h-5" />,
+      exact: true,
+      show: canUseBoard,
     },
     {
       name: '사용자 관리',
