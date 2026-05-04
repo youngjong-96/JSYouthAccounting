@@ -57,6 +57,54 @@ function prepareReportPayload(reportData) {
 }
 
 /**
+ * 지출결의서 목록에 작성자 이름을 연결해 화면에서 바로 사용할 수 있게 정리합니다.
+ * @param {Array<object>} reports
+ * @returns {Promise<Array<object>>}
+ */
+async function attachAuthorNamesToReports(reports = []) {
+  if (reports.length === 0) {
+    return [];
+  }
+
+  const userIds = [...new Set(reports.map((report) => report.user_id).filter(Boolean))];
+  if (userIds.length === 0) {
+    return reports.map((report) => ({ ...report, author_name: '' }));
+  }
+
+  const { data: profiles, error } = await supabase
+    .from('profiles')
+    .select('id, name')
+    .in('id', userIds);
+
+  if (error) {
+    throw new Error(`작성자 조회 실패: ${error.message}`);
+  }
+
+  const profileNameMap = new Map(
+    (profiles || []).map((profile) => [profile.id, profile.name || '']),
+  );
+
+  return reports.map((report) => ({
+    ...report,
+    author_name: profileNameMap.get(report.user_id) || '',
+  }));
+}
+
+/**
+ * 단건 지출결의서에도 작성자 이름을 연결해 상세 화면과 인쇄 양식에서 재사용합니다.
+ * @param {object | null} report
+ * @returns {Promise<object | null>}
+ */
+async function attachAuthorNameToReport(report) {
+  if (!report) {
+    return null;
+  }
+
+  const [resolvedReport] = await attachAuthorNamesToReports([report]);
+  return resolvedReport || report;
+}
+
+/**
  * 항목 배열을 DB 저장 형태로 변환합니다.
  * @param {string} reportId
  * @param {Array<object>} items
@@ -265,11 +313,13 @@ export async function getExpenseReports(options = {}) {
     throw new Error(`목록 조회 실패: ${error.message}`);
   }
 
+  const reportsWithAuthor = await attachAuthorNamesToReports(data || []);
+
   if (!ownOnly) {
-    return data || [];
+    return reportsWithAuthor;
   }
 
-  return (data || []).filter((report) => report.user_id === viewer?.id);
+  return reportsWithAuthor.filter((report) => report.user_id === viewer?.id);
 }
 
 /**
@@ -301,7 +351,7 @@ export async function getExpenseReport(id, options = {}) {
     throw new Error('본인 문서만 볼 수 있습니다.');
   }
 
-  return data;
+  return attachAuthorNameToReport(data);
 }
 
 /**
