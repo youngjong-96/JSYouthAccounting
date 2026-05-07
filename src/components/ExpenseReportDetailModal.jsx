@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, ImageIcon, Printer, X } from 'lucide-react';
 
@@ -6,6 +6,7 @@ const KOREAN_DIGITS = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔
 const KOREAN_SUBUNITS = ['', '십', '백', '천'];
 const KOREAN_UNITS = ['', '만', '억', '조'];
 const MIN_ITEM_ROWS = 8;
+const EMPTY_RECEIPTS = [];
 
 /**
  * 숫자 금액을 한글 금액 표기로 변환합니다.
@@ -233,6 +234,83 @@ function ReceiptGallery({ receipts }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * 영수증 렌더링에 사용할 안정적인 키를 생성합니다.
+ * @param {object} receipt
+ * @param {number} index
+ * @returns {string}
+ */
+function getReceiptKey(receipt, index) {
+  return receipt.id || `${receipt.image_url}-${index}`;
+}
+
+/**
+ * 영수증 원본 비율을 바탕으로 인쇄용 방향 타입을 구분합니다.
+ * @param {number} width
+ * @param {number} height
+ * @returns {'portrait' | 'landscape' | 'square'}
+ */
+function classifyReceiptOrientation(width, height) {
+  if (!width || !height) {
+    return 'landscape';
+  }
+
+  const ratio = width / height;
+
+  if (ratio >= 1.15) {
+    return 'landscape';
+  }
+
+  if (ratio <= 0.87) {
+    return 'portrait';
+  }
+
+  return 'square';
+}
+
+/**
+ * PC 인쇄 전용 영수증 섹션을 렌더링합니다.
+ * 파일명은 종이 낭비를 줄이기 위해 출력하지 않습니다.
+ * @param {{ receipts: Array<object>, receiptOrientations: Record<string, 'portrait' | 'landscape' | 'square'> }} props
+ * @returns {JSX.Element | null}
+ */
+function PrintReceiptSection({ receipts, receiptOrientations }) {
+  if (receipts.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="expense-report-print-only expense-report-print-receipts hidden">
+      <div className="mb-4 border-b border-black pb-2 text-black">
+        <h3 className="text-[18px] font-bold tracking-[0.2em]">첨부 영수증</h3>
+        <p className="mt-1 text-[12px]">{receipts.length}건</p>
+      </div>
+
+      <div className="expense-report-print-receipts-grid">
+        {receipts.map((receipt, index) => {
+          const receiptKey = getReceiptKey(receipt, index);
+          const orientation = receiptOrientations[receiptKey] || 'landscape';
+
+          return (
+            <figure
+              key={receiptKey}
+              className={`expense-report-print-receipt expense-report-print-receipt--${orientation}`}
+            >
+              <div className="expense-report-print-receipt-frame">
+                <img
+                  src={receipt.image_url}
+                  alt={`영수증 ${index + 1}`}
+                  className="expense-report-print-receipt-image"
+                />
+              </div>
+            </figure>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -519,17 +597,75 @@ function DesktopExpenseReportSheet({
  * @returns {JSX.Element | null}
  */
 const ExpenseReportDetailModal = ({ report, onClose }) => {
+  const receipts = report?.expense_receipts ?? EMPTY_RECEIPTS;
+  const [receiptOrientations, setReceiptOrientations] = useState({});
+  const totalAmount = Number(report?.total_amount) || 0;
+  const isReceiptPrintReady = receipts.length === 0
+    || receipts.every((receipt, index) => receiptOrientations[getReceiptKey(receipt, index)]);
+
+  const koreanAmountLabel = `${numberToKorean(totalAmount)} 원 정`;
+
+  /**
+   * 인쇄 전에 영수증 비율을 미리 읽어 용지에 맞는 크기 제한을 계산합니다.
+   * @returns {void}
+   */
+  useEffect(() => {
+    if (receipts.length === 0) {
+      return undefined;
+    }
+
+    let isCancelled = false;
+
+    const imageLoaders = receipts.map((receipt, index) => (
+      new Promise((resolve) => {
+        const receiptKey = getReceiptKey(receipt, index);
+        const image = new window.Image();
+
+        image.onload = () => {
+          resolve({
+            receiptKey,
+            orientation: classifyReceiptOrientation(image.naturalWidth, image.naturalHeight),
+          });
+        };
+
+        image.onerror = () => {
+          resolve({
+            receiptKey,
+            orientation: 'landscape',
+          });
+        };
+
+        image.src = receipt.image_url;
+      })
+    ));
+
+    Promise.all(imageLoaders).then((loadedReceipts) => {
+      if (isCancelled) {
+        return;
+      }
+
+      const nextOrientations = {};
+
+      loadedReceipts.forEach(({ receiptKey, orientation }) => {
+        nextOrientations[receiptKey] = orientation;
+      });
+
+      setReceiptOrientations(nextOrientations);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [receipts]);
+
   if (!report) {
     return null;
   }
 
   const resolutionDate = parseDateParts(report.resolution_date);
   const claimDate = parseDateParts(report.claim_date);
-  const totalAmount = Number(report.total_amount) || 0;
-  const koreanAmountLabel = `${numberToKorean(totalAmount)} 원 정`;
   const desktopItems = padExpenseItems(report.expense_items);
   const mobileItems = sortExpenseItems(report.expense_items);
-  const receipts = report.expense_receipts || [];
   const resolutionDateLabel = formatDateLabel(resolutionDate);
   const claimDateLabel = formatDateLabel(claimDate);
   const authorName = getReportAuthorName(report);
@@ -539,6 +675,10 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
    * @returns {void}
    */
   const handlePrint = () => {
+    if (receipts.length > 0 && !isReceiptPrintReady) {
+      return;
+    }
+
     window.scrollTo(0, 0);
 
     setTimeout(() => {
@@ -568,7 +708,8 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="hidden items-center gap-2 rounded-xl border border-black bg-white px-3 py-2 text-sm font-medium text-black transition-colors hover:bg-neutral-100 sm:inline-flex"
+              disabled={receipts.length > 0 && !isReceiptPrintReady}
+              className="hidden items-center gap-2 rounded-xl border border-black bg-white px-3 py-2 text-sm font-medium text-black transition-colors hover:bg-neutral-100 disabled:cursor-wait disabled:opacity-50 sm:inline-flex"
             >
               <Printer className="h-4 w-4" />
               인쇄하기
@@ -601,6 +742,11 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
             totalAmount={totalAmount}
             items={desktopItems}
             authorName={authorName}
+          />
+
+          <PrintReceiptSection
+            receipts={receipts}
+            receiptOrientations={receiptOrientations}
           />
 
           <ReceiptGallery receipts={receipts} />
@@ -666,6 +812,56 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
 
               .expense-report-desktop-sheet {
                 display: block !important;
+              }
+
+              .expense-report-print-only {
+                display: block !important;
+              }
+
+              .expense-report-print-receipts {
+                margin-top: 0 !important;
+                break-before: page;
+                page-break-before: always;
+              }
+
+              .expense-report-print-receipts-grid {
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 6mm;
+                align-items: start;
+              }
+
+              .expense-report-print-receipt {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                border: 1px solid black;
+                padding: 4mm;
+                background: white;
+              }
+
+              .expense-report-print-receipt-frame {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+
+              .expense-report-print-receipt-image {
+                display: block;
+                max-width: 100%;
+                height: auto;
+                object-fit: contain;
+              }
+
+              .expense-report-print-receipt--portrait .expense-report-print-receipt-image {
+                max-height: 118mm;
+              }
+
+              .expense-report-print-receipt--square .expense-report-print-receipt-image {
+                max-height: 90mm;
+              }
+
+              .expense-report-print-receipt--landscape .expense-report-print-receipt-image {
+                max-height: 72mm;
               }
             }
           `,
