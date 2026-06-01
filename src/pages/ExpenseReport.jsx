@@ -127,6 +127,23 @@ function canEditDraftReport(report, userId) {
  * @param {object} props
  * @returns {JSX.Element}
  */
+/**
+ * 체크 항목 변경 전에 사용자에게 보여줄 확인 문구를 생성합니다.
+ * @param {string} label
+ * @param {boolean} nextValue
+ * @returns {string}
+ */
+function getCheckConfirmMessage(label, nextValue) {
+  return nextValue
+    ? `${label} 체크박스를 누르시겠습니까?`
+    : `${label} 체크박스를 해제하시겠습니까?`;
+}
+
+/**
+ * 처리 체크 버튼을 렌더링합니다.
+ * @param {object} props
+ * @returns {JSX.Element}
+ */
 function CheckItem({ label, checked, checkedBy, canEdit, onToggle, updating }) {
   const title = checked && checkedBy
     ? `${checkedBy}님이 확인`
@@ -156,9 +173,6 @@ function CheckItem({ label, checked, checkedBy, canEdit, onToggle, updating }) {
         : <Circle className="w-3 h-3 flex-shrink-0" />
       }
       <span>{label}</span>
-      {checked && checkedBy && (
-        <span className="text-white/70 truncate max-w-[64px]">{checkedBy}</span>
-      )}
     </button>
   );
 }
@@ -292,8 +306,15 @@ const ExpenseReport = () => {
   const handleCheckToggle = async (reportId, field, currentValue) => {
     const updatingKey = `${reportId}-${field}`;
     const nextValue = !currentValue;
+    const checkField = CHECK_FIELDS.find((item) => item.field === field);
+    const checkLabel = checkField?.label || '체크 항목';
     const checkerName = nextValue ? (user?.name || '확인자') : null;
     const previousCheckerName = reports.find((report) => report.id === reportId)?.[`${field}_by`] || null;
+    const confirmMessage = getCheckConfirmMessage(checkLabel, nextValue);
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
 
     setUpdatingCheck(updatingKey);
 
