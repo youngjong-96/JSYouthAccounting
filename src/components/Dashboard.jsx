@@ -23,9 +23,13 @@ const Dashboard = () => {
 
   const isUserManagement = location.pathname === '/users';
   const isExpensePage = location.pathname.startsWith('/expense');
+  const isExpenseListPage = location.pathname === '/expense';
   const isBoardPage = location.pathname.startsWith('/board');
   const isMyPage = location.pathname === '/mypage';
   const showFilter = !isUserManagement && !isExpensePage && !isBoardPage && !isMyPage;
+  const mainClassName = isExpenseListPage
+    ? 'flex-1 w-full px-4 py-6 sm:px-6 md:max-w-[1120px] lg:max-w-[1320px] xl:max-w-[1480px] 2xl:max-w-[1640px] xl:px-8 mx-auto'
+    : 'flex-1 px-4 sm:px-6 py-6 max-w-4xl w-full mx-auto';
 
   /**
    * 선택한 기간 기준으로 재정 요약 데이터를 조회합니다.
@@ -94,7 +98,7 @@ const Dashboard = () => {
           </div>
         </nav>
 
-        <main className="flex-1 px-4 sm:px-6 py-6 max-w-4xl w-full mx-auto">
+        <main className={mainClassName}>
           {showFilter && (
             <div className="bg-white rounded-2xl shadow-sm border border-mist-200 p-5 mb-6">
               <div className="flex items-center gap-2 mb-4">

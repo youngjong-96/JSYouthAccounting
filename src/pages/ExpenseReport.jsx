@@ -140,7 +140,7 @@ function CheckItem({ label, checked, checkedBy, canEdit, onToggle, updating }) {
       disabled={updating || !canEdit}
       title={title}
       className={`
-        inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all border
+        inline-flex items-center gap-1 whitespace-nowrap px-2 py-1 rounded-lg text-[11px] font-medium transition-all border
         ${checked
           ? 'bg-navy-500 border-navy-500 text-white'
           : canEdit
@@ -157,7 +157,7 @@ function CheckItem({ label, checked, checkedBy, canEdit, onToggle, updating }) {
       }
       <span>{label}</span>
       {checked && checkedBy && (
-        <span className="text-white/70 truncate max-w-[56px]">{checkedBy}</span>
+        <span className="text-white/70 truncate max-w-[64px]">{checkedBy}</span>
       )}
     </button>
   );
@@ -431,8 +431,17 @@ const ExpenseReport = () => {
         </div>
       ) : (
         <>
-          <div className="hidden md:block bg-white rounded-2xl border border-mist-200 shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="hidden md:block bg-white rounded-2xl border border-mist-200 shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[1120px] table-fixed text-sm">
+              <colgroup>
+                <col style={{ width: '56px' }} />
+                <col style={{ width: '190px' }} />
+                <col style={{ width: '130px' }} />
+                <col />
+                <col style={{ width: '110px' }} />
+                <col style={{ width: '190px' }} />
+                <col style={{ width: '92px' }} />
+              </colgroup>
               <thead>
                 <tr className="bg-cream-100 border-b border-mist-200">
                   <th className="px-4 py-3.5 text-left text-xs font-semibold text-mist-500">No.</th>
@@ -454,22 +463,22 @@ const ExpenseReport = () => {
 
                   return (
                     <tr key={report.id} className="hover:bg-cream-100/60 transition-colors group">
-                      <td className="px-4 py-3.5 text-xs text-mist-400">{filteredReports.length - index}</td>
-                      <td className="px-4 py-3.5 text-sm text-navy-500">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{formatDate(report.resolution_date)}</span>
-                          <span className="text-xs text-mist-400">|</span>
-                          <span className="text-xs font-medium text-mist-500">{getReportAuthorName(report)}</span>
+                      <td className="px-3 py-3.5 text-xs text-mist-400 whitespace-nowrap">{filteredReports.length - index}</td>
+                      <td className="px-3 py-3.5 text-sm text-navy-500">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="shrink-0 whitespace-nowrap font-medium">{formatDate(report.resolution_date)}</span>
+                          <span className="shrink-0 text-xs text-mist-400">|</span>
+                          <span className="min-w-0 truncate whitespace-nowrap text-xs font-medium text-mist-500">{getReportAuthorName(report)}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-right font-bold text-navy-500 tabular-nums text-sm">
+                      <td className="px-3 py-3.5 text-right font-bold text-navy-500 tabular-nums text-sm whitespace-nowrap">
                         {(report.total_amount || 0).toLocaleString()}원
                       </td>
-                      <td className="px-4 py-3.5 text-sm text-mist-500 max-w-[200px] truncate">{summary}</td>
-                      <td className="px-4 py-3.5 text-center">
+                      <td className="px-3 py-3.5 text-sm text-mist-500 truncate whitespace-nowrap">{summary}</td>
+                      <td className="px-3 py-3.5 text-center whitespace-nowrap">
                         <StatusBadge status={report.status} />
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-3 py-3.5">
                         <div className="flex flex-col gap-1">
                           {CHECK_FIELDS.map(({ field, label }) => (
                             <CheckItem
@@ -484,7 +493,7 @@ const ExpenseReport = () => {
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-center">
+                      <td className="px-3 py-3.5 text-center">
                         <div className="flex items-center justify-center gap-1">
                           {canEditDraft && (
                             <button
