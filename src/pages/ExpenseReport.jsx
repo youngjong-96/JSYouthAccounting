@@ -183,7 +183,7 @@ function CheckItem({ label, checked, checkedBy, canEdit, onToggle, updating }) {
  */
 const ExpenseReport = () => {
   const navigate = useNavigate();
-  const { user, canManageChecks, isExpenseOwnOnly } = useAuth();
+  const { user, token, canManageChecks, isExpenseOwnOnly } = useAuth();
 
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -235,8 +235,7 @@ const ExpenseReport = () => {
 
     try {
       const reportList = await getExpenseReports({
-        ownOnly: isExpenseOwnOnly,
-        currentUserId: user.id,
+        token,
       });
       setReports(reportList || []);
     } catch (fetchError) {
@@ -244,7 +243,7 @@ const ExpenseReport = () => {
     } finally {
       setLoading(false);
     }
-  }, [isExpenseOwnOnly, user?.id]);
+  }, [token, user?.id]);
 
   useEffect(() => {
     fetchReports();
@@ -260,8 +259,7 @@ const ExpenseReport = () => {
 
     try {
       const report = await getExpenseReport(reportId, {
-        currentUserId: user?.id,
-        ownOnly: isExpenseOwnOnly,
+        token,
       });
       setSelectedReport(report);
       setShowDetail(true);

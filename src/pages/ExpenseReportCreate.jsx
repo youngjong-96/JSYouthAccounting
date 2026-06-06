@@ -263,7 +263,7 @@ function validateForSubmit({ resolutionDate, items, totalAmount }) {
 const ExpenseReportCreate = () => {
   const navigate = useNavigate();
   const { reportId } = useParams();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const isEditMode = Boolean(reportId);
 
   const [resolutionDate, setResolutionDate] = useState(todayStr());
@@ -313,7 +313,7 @@ const ExpenseReportCreate = () => {
     setLoadingDraft(true);
 
     try {
-      const report = await getExpenseReport(reportId, { currentUserId: user.id });
+      const report = await getExpenseReport(reportId, { token });
 
       if (report.user_id !== user.id || !isDraftReportStatus(report.status)) {
         throw new Error('작성 중인 임시저장 문서만 수정할 수 있습니다.');
@@ -340,7 +340,7 @@ const ExpenseReportCreate = () => {
     } finally {
       setLoadingDraft(false);
     }
-  }, [navigate, reportId, user?.id]);
+  }, [navigate, reportId, token, user?.id]);
 
   useEffect(() => {
     if (!isEditMode) {
