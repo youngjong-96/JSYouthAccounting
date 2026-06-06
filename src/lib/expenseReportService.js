@@ -1,6 +1,8 @@
 import { supabase } from './supabase';
 import { deleteReceipt } from './uploadReceipt';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 /**
  * 현재 로그인한 사용자를 조회합니다.
  * @param {{ required?: boolean }} options
@@ -20,7 +22,7 @@ async function getCurrentUser(options = {}) {
 }
 
 /**
- * 결의서 상태값을 소문자 문자열로 정규화합니다.
+ * 결의서 상태값을 비교용 문자열로 정규화합니다.
  * @param {string | null | undefined} status
  * @returns {string}
  */
@@ -29,8 +31,8 @@ function normalizeReportStatus(status) {
 }
 
 /**
- * 제출이 끝난 최종 상태인지 판별합니다.
- * 알 수 없는 상태값은 안전하게 초안처럼 취급합니다.
+ * 제출까지 완료된 최종 상태인지 확인합니다.
+ * 값이 비어 있으면 안전하게 초안으로 취급합니다.
  * @param {string | null | undefined} status
  * @returns {boolean}
  */
@@ -40,7 +42,7 @@ function isFinalizedReportStatus(status) {
 }
 
 /**
- * 지출결의서 공통 저장 필드를 정리합니다.
+ * 지출결의서 공통 저장 payload를 정리합니다.
  * @param {object} reportData
  * @returns {object}
  */
@@ -57,51 +59,66 @@ function prepareReportPayload(reportData) {
 }
 
 /**
- * 지출결의서 목록에 작성자 이름을 연결해 화면에서 바로 사용할 수 있게 정리합니다.
- * @param {Array<object>} reports
- * @returns {Promise<Array<object>>}
+ * 지출결의서 읽기 API 호출에 사용할 access token을 준비합니다.
+ * @param {string | null | undefined} token
+ * @returns {Promise<string>}
  */
-async function attachAuthorNamesToReports(reports = []) {
-  if (reports.length === 0) {
-    return [];
+async function getExpenseReadAccessToken(token) {
+  if (token) {
+    return token;
   }
 
-  const userIds = [...new Set(reports.map((report) => report.user_id).filter(Boolean))];
-  if (userIds.length === 0) {
-    return reports.map((report) => ({ ...report, author_name: '' }));
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('로그인이 필요합니다.');
   }
 
-  const { data: profiles, error } = await supabase
-    .from('profiles')
-    .select('id, name')
-    .in('id', userIds);
-
-  if (error) {
-    throw new Error(`작성자 조회 실패: ${error.message}`);
-  }
-
-  const profileNameMap = new Map(
-    (profiles || []).map((profile) => [profile.id, profile.name || '']),
-  );
-
-  return reports.map((report) => ({
-    ...report,
-    author_name: profileNameMap.get(report.user_id) || '',
-  }));
+  return session.access_token;
 }
 
 /**
- * 단건 지출결의서에도 작성자 이름을 연결해 상세 화면과 인쇄 양식에서 재사용합니다.
- * @param {object | null} report
- * @returns {Promise<object | null>}
+ * 지출결의서 읽기 API URL을 목록 또는 상세 조회 형태로 조합합니다.
+ * @param {string | null} reportId
+ * @returns {string}
  */
-async function attachAuthorNameToReport(report) {
-  if (!report) {
-    return null;
+function buildExpenseReportsReadUrl(reportId = null) {
+  const queryString = reportId
+    ? `?${new URLSearchParams({ id: reportId }).toString()}`
+    : '';
+
+  return `${API_URL}/api/expense/reports${queryString}`;
+}
+
+/**
+ * 지출결의서 읽기 API를 호출하고 응답 JSON을 반환합니다.
+ * @param {{ reportId?: string | null, token?: string | null }} options
+ * @returns {Promise<object | Array<object>>}
+ */
+async function requestExpenseReportsRead(options = {}) {
+  const { reportId = null, token = null } = options;
+  const accessToken = await getExpenseReadAccessToken(token);
+  const response = await fetch(buildExpenseReportsReadUrl(reportId), {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  let result = null;
+
+  try {
+    result = await response.json();
+  } catch {
+    result = null;
   }
 
-  const [resolvedReport] = await attachAuthorNamesToReports([report]);
-  return resolvedReport || report;
+  if (!response.ok) {
+    throw new Error(result?.error || '지출결의서 조회에 실패했습니다.');
+  }
+
+  return result;
 }
 
 /**
@@ -240,7 +257,7 @@ export async function createExpenseReport(reportData, items = [], receiptUrls = 
 }
 
 /**
- * 임시저장된 지출결의서를 수정 저장합니다.
+ * 임시저장한 지출결의서를 수정 저장합니다.
  * @param {string} reportId
  * @param {object} reportData
  * @param {Array<object>} items
@@ -286,72 +303,25 @@ export async function updateExpenseReport(reportId, reportData, items = [], rece
 }
 
 /**
- * 지출결의서 목록을 조회합니다.
- * 역할 권한이 전체 조회이면 모든 문서를, 본인 조회이면 본인 문서만 반환합니다.
- * @param {{ ownOnly?: boolean, currentUserId?: string | null }} options
+ * 지출결의서 목록을 서버 읽기 API를 통해 조회합니다.
+ * @param {{ token?: string | null }} options
  * @returns {Promise<Array<object>>}
  */
 export async function getExpenseReports(options = {}) {
-  const { ownOnly = false, currentUserId = null } = options;
-  const viewer = currentUserId ? { id: currentUserId } : await getCurrentUser({ required: false });
-
-  let query = supabase
-    .from('expense_reports')
-    .select(`
-      *,
-      expense_items (*)
-    `)
-    .order('created_at', { ascending: false });
-
-  if (ownOnly && viewer?.id) {
-    query = query.eq('user_id', viewer.id);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(`목록 조회 실패: ${error.message}`);
-  }
-
-  const reportsWithAuthor = await attachAuthorNamesToReports(data || []);
-
-  if (!ownOnly) {
-    return reportsWithAuthor;
-  }
-
-  return reportsWithAuthor.filter((report) => report.user_id === viewer?.id);
+  const { token = null } = options;
+  const data = await requestExpenseReportsRead({ token });
+  return Array.isArray(data) ? data : [];
 }
 
 /**
- * 지출결의서 상세를 조회합니다.
- * 역할 권한이 본인 조회이면 본인 문서만, 전체 조회이면 모든 문서를 열 수 있습니다.
+ * 지출결의서 상세를 서버 읽기 API를 통해 조회합니다.
  * @param {string} id
- * @param {{ currentUserId?: string | null, ownOnly?: boolean }} options
+ * @param {{ token?: string | null }} options
  * @returns {Promise<object>}
  */
 export async function getExpenseReport(id, options = {}) {
-  const { currentUserId = null, ownOnly = false } = options;
-  const viewer = currentUserId ? { id: currentUserId } : await getCurrentUser({ required: false });
-
-  const { data, error } = await supabase
-    .from('expense_reports')
-    .select(`
-      *,
-      expense_items (*),
-      expense_receipts (*)
-    `)
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    throw new Error(`상세 조회 실패: ${error.message}`);
-  }
-
-  if (ownOnly && data.user_id !== viewer?.id) {
-    throw new Error('본인 문서만 볼 수 있습니다.');
-  }
-
-  return attachAuthorNameToReport(data);
+  const { token = null } = options;
+  return requestExpenseReportsRead({ reportId: id, token });
 }
 
 /**
