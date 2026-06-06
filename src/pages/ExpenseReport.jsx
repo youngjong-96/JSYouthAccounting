@@ -25,7 +25,7 @@ import { useAuth } from '../context/AuthContext';
 const statusMap = {
   draft: { label: '임시저장', cls: 'bg-gold-50 text-gold-600 border-gold-200' },
   submitted: { label: '제출완료', cls: 'bg-green-50 text-green-700 border-green-200' },
-  approved: { label: '승인완료', cls: 'bg-navy-50 text-navy-600 border-navy-200' },
+  approved: { label: '확인완료', cls: 'bg-navy-50 text-navy-600 border-navy-200' },
   unknown: { label: '상태 확인 필요', cls: 'bg-red-50 text-red-600 border-red-200' },
 };
 
@@ -35,6 +35,9 @@ const CHECK_FIELDS = [
   { field: 'payment_completed', label: '지급 완료' },
   { field: 'print_completed', label: '출력 완료' },
 ];
+
+/* 목록 화면은 PC와 모바일 모두 페이지당 5건씩만 보여줍니다. */
+const REPORTS_PER_PAGE = 5;
 
 /**
  * 결의서 상태값을 비교용 문자열로 정규화합니다.
@@ -46,7 +49,7 @@ function normalizeReportStatus(status) {
 }
 
 /**
- * 현재 문서가 수정 가능한 초안 상태인지 판별합니다.
+ * 현재 문서가 수정 가능한 임시저장 상태인지 확인합니다.
  * @param {string | null | undefined} status
  * @returns {boolean}
  */
@@ -55,15 +58,11 @@ function isDraftReportStatus(status) {
 }
 
 /**
- * 현재 문서가 최종 제출 완료 상태인지 판별합니다.
- * @param {string | null | undefined} status
- * @returns {boolean}
- */
-/**
- * 현재 사용자에게 목록에서 보여줘야 하는 문서인지 판별합니다.
- * 제출된 문서는 모두 보여주고, 초안은 작성자 본인에게만 보여줍니다.
+ * 현재 사용자에게 목록에서 보여줄 수 있는 문서인지 확인합니다.
+ * 전체 조회 권한이면 모두 보여주고, 본인 전용 권한이면 본인 문서만 보여줍니다.
  * @param {object} report
  * @param {string | undefined} userId
+ * @param {boolean} ownOnly
  * @returns {boolean}
  */
 function canViewReportInList(report, userId, ownOnly) {
@@ -90,7 +89,7 @@ function StatusBadge({ status }) {
 }
 
 /**
- * 날짜 문자열을 목록용 표시 형식으로 변환합니다.
+ * 날짜 문자열을 목록 표시 형식으로 변환합니다.
  * @param {string | null | undefined} dateStr
  * @returns {string}
  */
@@ -104,7 +103,7 @@ function formatDate(dateStr) {
 }
 
 /**
- * 지출결의서 데이터에서 목록 표시용 작성자 이름을 추출합니다.
+ * 지출결의서 데이터에서 작성자 이름을 안전하게 추출합니다.
  * @param {object} report
  * @returns {string}
  */
@@ -113,7 +112,7 @@ function getReportAuthorName(report) {
 }
 
 /**
- * 현재 사용자가 수정 버튼을 볼 수 있는 문서인지 판별합니다.
+ * 현재 사용자가 임시저장 문서를 수정할 수 있는지 확인합니다.
  * @param {object} report
  * @param {string | undefined} userId
  * @returns {boolean}
@@ -123,12 +122,7 @@ function canEditDraftReport(report, userId) {
 }
 
 /**
- * 처리 체크 버튼을 렌더링합니다.
- * @param {object} props
- * @returns {JSX.Element}
- */
-/**
- * 체크 항목 변경 전에 사용자에게 보여줄 확인 문구를 생성합니다.
+ * 체크 항목 변경 전에 보여줄 확인 문구를 생성합니다.
  * @param {string} label
  * @param {boolean} nextValue
  * @returns {string}
@@ -141,7 +135,14 @@ function getCheckConfirmMessage(label, nextValue) {
 
 /**
  * 처리 체크 버튼을 렌더링합니다.
- * @param {object} props
+ * @param {{
+ *   label: string,
+ *   checked: boolean,
+ *   checkedBy: string | null | undefined,
+ *   canEdit: boolean,
+ *   onToggle: (() => void) | undefined,
+ *   updating: boolean
+ * }} props
  * @returns {JSX.Element}
  */
 function CheckItem({ label, checked, checkedBy, canEdit, onToggle, updating }) {
@@ -178,7 +179,7 @@ function CheckItem({ label, checked, checkedBy, canEdit, onToggle, updating }) {
 }
 
 /**
- * 지출결의서 목록, 상세, 삭제, 초안 수정 진입 기능을 제공합니다.
+ * 지출결의서 목록, 상세, 삭제, 임시저장 수정 진입 기능을 제공합니다.
  * @returns {JSX.Element}
  */
 const ExpenseReport = () => {
@@ -193,16 +194,17 @@ const ExpenseReport = () => {
   const [showDetail, setShowDetail] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [updatingCheck, setUpdatingCheck] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
     director_confirmed: 'all',
     payment_completed: 'all',
     print_completed: 'all',
   });
 
-  /* 현재 사용자 기준으로 실제 목록에 보여줄 문서만 추립니다. */
+  /* 현재 사용자 기준으로 실제 목록에서 보여줄 문서만 추립니다. */
   const visibleReports = reports.filter((report) => canViewReportInList(report, user?.id, isExpenseOwnOnly));
 
-  /* 체크 필터까지 적용된 최종 목록을 계산합니다. */
+  /* 체크 필터까지 적용한 최종 목록을 계산합니다. */
   const filteredReports = visibleReports.filter((report) => (
     CHECK_FIELDS.every(({ field }) => {
       const filterValue = filters[field];
@@ -220,6 +222,13 @@ const ExpenseReport = () => {
   ));
 
   const hasActiveFilter = Object.values(filters).some((value) => value !== 'all');
+  const totalPages = Math.max(1, Math.ceil(filteredReports.length / REPORTS_PER_PAGE));
+  const pageStartIndex = (currentPage - 1) * REPORTS_PER_PAGE;
+  const paginatedReports = filteredReports.slice(pageStartIndex, pageStartIndex + REPORTS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage((prevPage) => Math.min(prevPage, totalPages));
+  }, [totalPages]);
 
   /**
    * 지출결의서 목록을 조회합니다.
@@ -280,7 +289,7 @@ const ExpenseReport = () => {
   };
 
   /**
-   * 결의서를 삭제한 뒤 목록을 새로고침합니다.
+   * 결의서를 삭제하고 목록을 새로고칩니다.
    * @param {string} reportId
    * @returns {Promise<void>}
    */
@@ -295,7 +304,7 @@ const ExpenseReport = () => {
   };
 
   /**
-   * 처리 체크 상태를 토글하고 실패 시 원상복구합니다.
+   * 처리 체크 상태를 즉시 반영하고 실패 시 이전 상태로 되돌립니다.
    * @param {string} reportId
    * @param {string} field
    * @param {boolean} currentValue
@@ -387,7 +396,10 @@ const ExpenseReport = () => {
             <div key={field} className="flex-1 min-w-[100px]">
               <select
                 value={filters[field]}
-                onChange={(event) => setFilters((prev) => ({ ...prev, [field]: event.target.value }))}
+                onChange={(event) => {
+                  setCurrentPage(1);
+                  setFilters((prev) => ({ ...prev, [field]: event.target.value }));
+                }}
                 className={`
                   w-full text-[11px] font-medium border rounded-lg px-2 py-1.5 outline-none transition-all cursor-pointer
                   ${filters[field] === 'all'
@@ -411,11 +423,14 @@ const ExpenseReport = () => {
 
           {hasActiveFilter && (
             <button
-              onClick={() => setFilters({
-                director_confirmed: 'all',
-                payment_completed: 'all',
-                print_completed: 'all',
-              })}
+              onClick={() => {
+                setCurrentPage(1);
+                setFilters({
+                  director_confirmed: 'all',
+                  payment_completed: 'all',
+                  print_completed: 'all',
+                });
+              }}
               className="text-[10px] text-red-500 font-bold flex items-center gap-1 hover:bg-red-50 px-2 py-0.5 rounded transition-colors"
             >
               <span>초기화</span>
@@ -473,7 +488,7 @@ const ExpenseReport = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-mist-100">
-                {filteredReports.map((report, index) => {
+                {paginatedReports.map((report, index) => {
                   const firstItem = report.expense_items?.[0];
                   const summary = firstItem
                     ? `${firstItem.account_category} · ${firstItem.description}`
@@ -482,7 +497,9 @@ const ExpenseReport = () => {
 
                   return (
                     <tr key={report.id} className="hover:bg-cream-100/60 transition-colors group">
-                      <td className="px-3 py-3.5 text-xs text-mist-400 whitespace-nowrap">{filteredReports.length - index}</td>
+                      <td className="px-3 py-3.5 text-xs text-mist-400 whitespace-nowrap">
+                        {filteredReports.length - pageStartIndex - index}
+                      </td>
                       <td className="px-3 py-3.5 text-sm text-navy-500">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="shrink-0 whitespace-nowrap font-medium">{formatDate(report.resolution_date)}</span>
@@ -548,7 +565,7 @@ const ExpenseReport = () => {
           </div>
 
           <div className="md:hidden space-y-3">
-            {filteredReports.map((report, index) => {
+            {paginatedReports.map((report, index) => {
               const firstItem = report.expense_items?.[0];
               const summary = firstItem
                 ? `${firstItem.account_category} · ${firstItem.description}`
@@ -562,7 +579,7 @@ const ExpenseReport = () => {
                     className="p-4 active:bg-cream-100 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center justify-between mb-2.5">
-                      <span className="text-xs text-mist-400">#{filteredReports.length - index}</span>
+                      <span className="text-xs text-mist-400">#{filteredReports.length - pageStartIndex - index}</span>
                       <StatusBadge status={report.status} />
                     </div>
                     <div className="flex items-baseline justify-between mb-1.5">
@@ -619,6 +636,45 @@ const ExpenseReport = () => {
               );
             })}
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex flex-col items-center gap-2 pt-1">
+              <div className="text-xs text-mist-400">
+                {currentPage} / {totalPages} 페이지
+              </div>
+              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setCurrentPage((prevPage) => Math.max(1, prevPage - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-mist-200 text-xs font-medium text-navy-500 bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:border-navy-300 transition-colors"
+                >
+                  이전
+                </button>
+
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    onClick={() => setCurrentPage(pageNumber)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                      pageNumber === currentPage
+                        ? 'bg-navy-500 border-navy-500 text-white'
+                        : 'bg-white border-mist-200 text-navy-500 hover:border-navy-300'
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+
+                <button
+                  onClick={() => setCurrentPage((prevPage) => Math.min(totalPages, prevPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-mist-200 text-xs font-medium text-navy-500 bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:border-navy-300 transition-colors"
+                >
+                  다음
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
