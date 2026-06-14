@@ -331,18 +331,20 @@ const ExpenseReport = () => {
   const [pageTransitioning, setPageTransitioning] = useState(false);
   const [error, setError] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [updatingCheck, setUpdatingCheck] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState(createDefaultFilters);
   const listRequestIdRef = useRef(0);
+  const detailRequestIdRef = useRef(0);
   const hasLoadedListRef = useRef(false);
 
   const hasActiveFilter = Object.values(filters).some((value) => value !== 'all');
   const reports = reportPage.items || [];
   const showListTransitionState = pageTransitioning && !loading;
+  const isDetailLoading = Boolean(detailLoadingId);
 
   /**
    * 지출결의서 목록을 서버 페이지 데이터 API로 조회합니다.
@@ -448,17 +450,45 @@ const ExpenseReport = () => {
    * @returns {Promise<void>}
    */
   const handleView = async (reportId) => {
-    setDetailLoading(true);
+    const requestId = detailRequestIdRef.current + 1;
+
+    detailRequestIdRef.current = requestId;
+    setDetailLoadingId(reportId);
+    setSelectedReport(null);
+    setShowDetail(true);
 
     try {
       const report = await getExpenseReport(reportId, { token });
+
+      if (requestId !== detailRequestIdRef.current) {
+        return;
+      }
+
       setSelectedReport(report);
-      setShowDetail(true);
     } catch (viewError) {
+      if (requestId !== detailRequestIdRef.current) {
+        return;
+      }
+
+      setShowDetail(false);
+      setSelectedReport(null);
       alert(`상세 조회에 실패했습니다: ${viewError.message}`);
     } finally {
-      setDetailLoading(false);
+      if (requestId === detailRequestIdRef.current) {
+        setDetailLoadingId(null);
+      }
     }
+  };
+
+  /**
+   * 열려 있는 상세 모달을 닫고 진행 중인 상세 요청 응답을 무시합니다.
+   * @returns {void}
+   */
+  const handleCloseDetail = () => {
+    detailRequestIdRef.current += 1;
+    setDetailLoadingId(null);
+    setShowDetail(false);
+    setSelectedReport(null);
   };
 
   /**
@@ -777,11 +807,13 @@ const ExpenseReport = () => {
                             )}
                             <button
                               onClick={() => handleView(report.id)}
-                              disabled={detailLoading}
+                              disabled={detailLoadingId === report.id}
                               className="rounded-lg p-2 text-navy-400 transition-colors hover:bg-navy-50 hover:text-navy-600 disabled:cursor-wait disabled:opacity-50"
                               title="상세 보기"
                             >
-                              <Eye className="h-4 w-4" />
+                              {detailLoadingId === report.id
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <Eye className="h-4 w-4" />}
                             </button>
                             <button
                               onClick={() => setDeleteConfirmId(report.id)}
@@ -807,11 +839,21 @@ const ExpenseReport = () => {
                   <div key={report.id} className="overflow-hidden rounded-2xl border border-mist-200 bg-white">
                     <div
                       onClick={() => handleView(report.id)}
-                      className="cursor-pointer p-4 transition-colors active:bg-cream-100"
+                      className={`cursor-pointer p-4 transition-colors active:bg-cream-100 ${
+                        detailLoadingId === report.id ? 'cursor-wait opacity-80' : ''
+                      }`}
                     >
                       <div className="mb-2.5 flex items-center justify-between">
                         <span className="text-xs text-mist-400">#{getListRowNumber(index)}</span>
-                        <StatusBadge status={report.status} />
+                        <div className="flex items-center gap-2">
+                          {detailLoadingId === report.id && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 text-[10px] font-semibold text-navy-500">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              불러오는 중
+                            </span>
+                          )}
+                          <StatusBadge status={report.status} />
+                        </div>
                       </div>
                       <div className="mb-1.5 flex items-baseline justify-between">
                         <div className="flex min-w-0 items-center gap-2">
@@ -860,10 +902,12 @@ const ExpenseReport = () => {
                         )}
                         <button
                           onClick={() => handleView(report.id)}
-                          disabled={detailLoading}
+                          disabled={detailLoadingId === report.id}
                           className="flex items-center gap-1 text-xs font-medium text-navy-400 disabled:cursor-wait disabled:opacity-50"
                         >
-                          <Eye className="h-3 w-3" />
+                          {detailLoadingId === report.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Eye className="h-3 w-3" />}
                           상세 보기
                         </button>
                       </div>
@@ -968,13 +1012,12 @@ const ExpenseReport = () => {
         </div>
       )}
 
-      {showDetail && selectedReport && (
+      {showDetail && (
         <ExpenseReportDetailModal
+          key={selectedReport?.id || detailLoadingId || 'detail-loading'}
           report={selectedReport}
-          onClose={() => {
-            setShowDetail(false);
-            setSelectedReport(null);
-          }}
+          loading={isDetailLoading}
+          onClose={handleCloseDetail}
         />
       )}
     </div>

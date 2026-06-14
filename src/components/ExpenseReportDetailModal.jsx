@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, ImageIcon, Printer, X } from 'lucide-react';
+import { Download, ImageIcon, Loader2, Printer, X } from 'lucide-react';
 
 const KOREAN_DIGITS = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
 const KOREAN_SUBUNITS = ['', '십', '백', '천'];
@@ -593,15 +593,60 @@ function DesktopExpenseReportSheet({
 
 /**
  * 지출결의서 상세 조회와 인쇄용 양식을 렌더링하는 모달입니다.
- * @param {{ report: object | null, onClose: () => void }} props
+ * @param {{ report: object | null, loading?: boolean, onClose: () => void }} props
  * @returns {JSX.Element | null}
  */
-const ExpenseReportDetailModal = ({ report, onClose }) => {
+/**
+ * 상세 데이터를 기다리는 동안 보여줄 로딩 전용 레이아웃을 렌더링합니다.
+ * @returns {JSX.Element}
+ */
+function DetailLoadingView() {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-[28px] bg-gradient-to-br from-navy-500 via-navy-600 to-navy-800 p-5 text-white shadow-lg shadow-navy-500/15">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <div className="h-3 w-28 rounded-full bg-white/20" />
+            <div className="h-8 w-44 rounded-full bg-white/20" />
+          </div>
+          <div className="h-7 w-24 rounded-full bg-white/20" />
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="h-20 rounded-2xl bg-white/10" />
+          <div className="h-20 rounded-2xl bg-white/10" />
+        </div>
+        <div className="mt-3 h-24 rounded-2xl bg-white" />
+      </div>
+
+      <div className="animate-pulse rounded-3xl border border-mist-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 h-5 w-32 rounded-full bg-cream-100" />
+        <div className="space-y-3">
+          <div className="h-24 rounded-2xl bg-cream-100/80" />
+          <div className="h-24 rounded-2xl bg-cream-100/80" />
+          <div className="h-24 rounded-2xl bg-cream-100/80" />
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-gold-200 bg-gold-50 px-4 py-5 text-center shadow-sm">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-navy-500 shadow-sm">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+        <p className="mt-3 text-sm font-semibold text-navy-500">상세 내용을 불러오는 중입니다.</p>
+        <p className="mt-1 text-xs text-mist-500">잠시만 기다려주세요.</p>
+      </div>
+    </div>
+  );
+}
+
+const ExpenseReportDetailModal = ({ report, loading = false, onClose }) => {
   const receipts = report?.expense_receipts ?? EMPTY_RECEIPTS;
   const [receiptOrientations, setReceiptOrientations] = useState({});
+  const isLoadingView = loading || !report;
   const totalAmount = Number(report?.total_amount) || 0;
-  const isReceiptPrintReady = receipts.length === 0
-    || receipts.every((receipt, index) => receiptOrientations[getReceiptKey(receipt, index)]);
+  const isReceiptPrintReady = !isLoadingView && (
+    receipts.length === 0
+    || receipts.every((receipt, index) => receiptOrientations[getReceiptKey(receipt, index)])
+  );
 
   const koreanAmountLabel = `${numberToKorean(totalAmount)} 원 정`;
 
@@ -610,7 +655,7 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
    * @returns {void}
    */
   useEffect(() => {
-    if (receipts.length === 0) {
+    if (!report || receipts.length === 0) {
       return undefined;
     }
 
@@ -656,16 +701,16 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
     return () => {
       isCancelled = true;
     };
-  }, [receipts]);
+  }, [report, receipts]);
 
-  if (!report) {
+  if (!report && !loading) {
     return null;
   }
 
-  const resolutionDate = parseDateParts(report.resolution_date);
-  const claimDate = parseDateParts(report.claim_date);
-  const desktopItems = padExpenseItems(report.expense_items);
-  const mobileItems = sortExpenseItems(report.expense_items);
+  const resolutionDate = parseDateParts(report?.resolution_date);
+  const claimDate = parseDateParts(report?.claim_date);
+  const desktopItems = padExpenseItems(report?.expense_items);
+  const mobileItems = sortExpenseItems(report?.expense_items);
   const resolutionDateLabel = formatDateLabel(resolutionDate);
   const claimDateLabel = formatDateLabel(claimDate);
   const authorName = getReportAuthorName(report);
@@ -675,7 +720,7 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
    * @returns {void}
    */
   const handlePrint = () => {
-    if (receipts.length > 0 && !isReceiptPrintReady) {
+    if (isLoadingView || (receipts.length > 0 && !isReceiptPrintReady)) {
       return;
     }
 
@@ -704,11 +749,13 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
 
       <div className="expense-report-modal relative z-10 mx-auto my-4 w-full max-w-[860px] rounded-2xl bg-white shadow-2xl">
         <div className="expense-report-screen-only sticky top-0 z-10 flex items-center justify-between rounded-t-2xl border-b border-black bg-white px-4 py-3">
-          <h2 className="text-base font-bold text-black">지출결의서 상세</h2>
+          <h2 className="text-base font-bold text-black">
+            {isLoadingView ? '지출결의서 상세 불러오는 중' : '지출결의서 상세'}
+          </h2>
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              disabled={receipts.length > 0 && !isReceiptPrintReady}
+              disabled={isLoadingView || (receipts.length > 0 && !isReceiptPrintReady)}
               className="hidden items-center gap-2 rounded-xl border border-black bg-white px-3 py-2 text-sm font-medium text-black transition-colors hover:bg-neutral-100 disabled:cursor-wait disabled:opacity-50 sm:inline-flex"
             >
               <Printer className="h-4 w-4" />
@@ -724,32 +771,38 @@ const ExpenseReportDetailModal = ({ report, onClose }) => {
         </div>
 
         <div className="expense-report-print-area p-4 sm:p-6">
-          <MobileExpenseReportView
-            report={report}
-            resolutionDateLabel={resolutionDateLabel}
-            claimDateLabel={claimDateLabel}
-            koreanAmountLabel={koreanAmountLabel}
-            totalAmount={totalAmount}
-            items={mobileItems}
-            authorName={authorName}
-          />
+          {isLoadingView ? (
+            <DetailLoadingView />
+          ) : (
+            <>
+              <MobileExpenseReportView
+                report={report}
+                resolutionDateLabel={resolutionDateLabel}
+                claimDateLabel={claimDateLabel}
+                koreanAmountLabel={koreanAmountLabel}
+                totalAmount={totalAmount}
+                items={mobileItems}
+                authorName={authorName}
+              />
 
-          <DesktopExpenseReportSheet
-            report={report}
-            resolutionDate={resolutionDate}
-            claimDate={claimDate}
-            koreanAmountLabel={koreanAmountLabel}
-            totalAmount={totalAmount}
-            items={desktopItems}
-            authorName={authorName}
-          />
+              <DesktopExpenseReportSheet
+                report={report}
+                resolutionDate={resolutionDate}
+                claimDate={claimDate}
+                koreanAmountLabel={koreanAmountLabel}
+                totalAmount={totalAmount}
+                items={desktopItems}
+                authorName={authorName}
+              />
 
-          <PrintReceiptSection
-            receipts={receipts}
-            receiptOrientations={receiptOrientations}
-          />
+              <PrintReceiptSection
+                receipts={receipts}
+                receiptOrientations={receiptOrientations}
+              />
 
-          <ReceiptGallery receipts={receipts} />
+              <ReceiptGallery receipts={receipts} />
+            </>
+          )}
         </div>
       </div>
 
