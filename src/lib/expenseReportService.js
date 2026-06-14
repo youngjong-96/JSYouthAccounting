@@ -80,27 +80,79 @@ async function getExpenseReadAccessToken(token) {
 }
 
 /**
+ * 목록 체크 필터 값을 API 규격에 맞는 기본값과 함께 정리합니다.
+ * @param {{
+ *   director_confirmed?: string,
+ *   payment_completed?: string,
+ *   print_completed?: string
+ * } | undefined} filters
+ * @returns {{ director_confirmed: string, payment_completed: string, print_completed: string }}
+ */
+function normalizeExpenseReportFilters(filters = {}) {
+  return {
+    director_confirmed: filters.director_confirmed || 'all',
+    payment_completed: filters.payment_completed || 'all',
+    print_completed: filters.print_completed || 'all',
+  };
+}
+
+/**
  * 지출결의서 읽기 API URL을 목록 또는 상세 조회 형태로 조합합니다.
- * @param {string | null} reportId
+ * @param {{
+ *   reportId?: string | null,
+ *   page?: number,
+ *   limit?: number,
+ *   filters?: {
+ *     director_confirmed?: string,
+ *     payment_completed?: string,
+ *     print_completed?: string
+ *   }
+ * }} options
  * @returns {string}
  */
-function buildExpenseReportsReadUrl(reportId = null) {
-  const queryString = reportId
-    ? `?${new URLSearchParams({ id: reportId }).toString()}`
-    : '';
+function buildExpenseReportsReadUrl(options = {}) {
+  const {
+    reportId = null,
+    page = 1,
+    limit = 5,
+    filters = {},
+  } = options;
 
-  return `${API_URL}/api/expense/reports${queryString}`;
+  const params = new URLSearchParams();
+
+  if (reportId) {
+    params.set('id', reportId);
+  } else {
+    const normalizedFilters = normalizeExpenseReportFilters(filters);
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    params.set('director_confirmed', normalizedFilters.director_confirmed);
+    params.set('payment_completed', normalizedFilters.payment_completed);
+    params.set('print_completed', normalizedFilters.print_completed);
+  }
+
+  return `${API_URL}/api/expense/reports?${params.toString()}`;
 }
 
 /**
  * 지출결의서 읽기 API를 호출하고 응답 JSON을 반환합니다.
- * @param {{ reportId?: string | null, token?: string | null }} options
- * @returns {Promise<object | Array<object>>}
+ * @param {{
+ *   reportId?: string | null,
+ *   page?: number,
+ *   limit?: number,
+ *   filters?: {
+ *     director_confirmed?: string,
+ *     payment_completed?: string,
+ *     print_completed?: string
+ *   },
+ *   token?: string | null
+ * }} options
+ * @returns {Promise<object>}
  */
 async function requestExpenseReportsRead(options = {}) {
-  const { reportId = null, token = null } = options;
+  const { token = null } = options;
   const accessToken = await getExpenseReadAccessToken(token);
-  const response = await fetch(buildExpenseReportsReadUrl(reportId), {
+  const response = await fetch(buildExpenseReportsReadUrl(options), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -303,14 +355,42 @@ export async function updateExpenseReport(reportId, reportData, items = [], rece
 }
 
 /**
- * 지출결의서 목록을 서버 읽기 API를 통해 조회합니다.
- * @param {{ token?: string | null }} options
- * @returns {Promise<Array<object>>}
+ * 지출결의서 목록을 서버 페이지네이션 API를 통해 조회합니다.
+ * @param {{
+ *   token?: string | null,
+ *   page?: number,
+ *   limit?: number,
+ *   filters?: {
+ *     director_confirmed?: string,
+ *     payment_completed?: string,
+ *     print_completed?: string
+ *   }
+ * }} options
+ * @returns {Promise<{
+ *   items: Array<object>,
+ *   page: number,
+ *   limit: number,
+ *   total_count: number,
+ *   total_pages: number,
+ *   has_next: boolean,
+ *   has_prev: boolean,
+ *   scope_total_count: number
+ * }>}
  */
 export async function getExpenseReports(options = {}) {
-  const { token = null } = options;
-  const data = await requestExpenseReportsRead({ token });
-  return Array.isArray(data) ? data : [];
+  const {
+    token = null,
+    page = 1,
+    limit = 5,
+    filters = {},
+  } = options;
+
+  return requestExpenseReportsRead({
+    token,
+    page,
+    limit,
+    filters: normalizeExpenseReportFilters(filters),
+  });
 }
 
 /**
