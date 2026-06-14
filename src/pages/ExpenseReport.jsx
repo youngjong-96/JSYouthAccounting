@@ -39,6 +39,12 @@ const CHECK_FIELDS = [
 /* PC와 모바일 모두 한 번에 5건씩만 표시합니다. */
 const REPORTS_PER_PAGE = 5;
 
+/* 최근에 본 목록 페이지를 잠시 재사용할 수 있도록 캐시 유지 시간을 정의합니다. */
+const REPORT_PAGE_CACHE_TTL_MS = 60 * 1000;
+
+/* 최근에 본 상세 문서를 잠시 재사용할 수 있도록 캐시 유지 시간을 정의합니다. */
+const REPORT_DETAIL_CACHE_TTL_MS = 60 * 1000;
+
 /* 비어 있는 목록 페이지의 기본 구조를 정의합니다. */
 const EMPTY_REPORT_PAGE = {
   items: [],
@@ -53,6 +59,9 @@ const EMPTY_REPORT_PAGE = {
 
 /* 사용자별 목록 페이지 캐시를 세션 메모리에 유지합니다. */
 const expenseReportPageCache = new Map();
+
+/* 사용자별 상세 문서 캐시를 세션 메모리에 유지합니다. */
+const expenseReportDetailCache = new Map();
 
 /* 다음 페이지 선로딩 요청 중복을 막기 위해 진행 중인 요청을 기록합니다. */
 const expenseReportPagePrefetchMap = new Map();
@@ -223,12 +232,78 @@ function createExpenseReportPageCacheKey({
 }
 
 /**
+ * 사용자별 상세 문서 캐시 키를 생성합니다.
+ * @param {{ userId: string, reportId: string }} options
+ * @returns {string}
+ */
+function createExpenseReportDetailCacheKey({ userId, reportId }) {
+  return [userId, reportId].join('::');
+}
+
+/**
+ * 목록 페이지 캐시 엔트리가 아직 즉시 재사용 가능한 상태인지 확인합니다.
+ * @param {{ pageData: object, cachedAt: number } | null} cacheEntry
+ * @returns {boolean}
+ */
+function isExpenseReportPageCacheFresh(cacheEntry) {
+  if (!cacheEntry) {
+    return false;
+  }
+
+  return (Date.now() - cacheEntry.cachedAt) < REPORT_PAGE_CACHE_TTL_MS;
+}
+
+/**
+ * 상세 문서 캐시 엔트리가 아직 즉시 재사용 가능한 상태인지 확인합니다.
+ * @param {{ reportData: object, cachedAt: number } | null} cacheEntry
+ * @returns {boolean}
+ */
+function isExpenseReportDetailCacheFresh(cacheEntry) {
+  if (!cacheEntry) {
+    return false;
+  }
+
+  return (Date.now() - cacheEntry.cachedAt) < REPORT_DETAIL_CACHE_TTL_MS;
+}
+
+/**
+ * 캐시에 저장된 원본 엔트리를 조회합니다.
+ * @param {string} cacheKey
+ * @returns {{ pageData: object, cachedAt: number } | null}
+ */
+function getCachedExpenseReportPageEntry(cacheKey) {
+  return expenseReportPageCache.get(cacheKey) || null;
+}
+
+/**
+ * 캐시에 저장된 상세 문서 원본 엔트리를 조회합니다.
+ * @param {string} cacheKey
+ * @returns {{ reportData: object, cachedAt: number } | null}
+ */
+function getCachedExpenseReportDetailEntry(cacheKey) {
+  return expenseReportDetailCache.get(cacheKey) || null;
+}
+
+/**
  * 캐시에 저장된 목록 페이지를 안전하게 조회합니다.
  * @param {string} cacheKey
  * @returns {object | null}
  */
 function getCachedExpenseReportPage(cacheKey) {
-  return expenseReportPageCache.get(cacheKey) || null;
+  const cacheEntry = getCachedExpenseReportPageEntry(cacheKey);
+
+  return cacheEntry?.pageData || null;
+}
+
+/**
+ * 캐시에 저장된 상세 문서를 안전하게 조회합니다.
+ * @param {string} cacheKey
+ * @returns {object | null}
+ */
+function getCachedExpenseReportDetail(cacheKey) {
+  const cacheEntry = getCachedExpenseReportDetailEntry(cacheKey);
+
+  return cacheEntry?.reportData || null;
 }
 
 /**
@@ -238,7 +313,23 @@ function getCachedExpenseReportPage(cacheKey) {
  * @returns {void}
  */
 function setCachedExpenseReportPage(cacheKey, nextPage) {
-  expenseReportPageCache.set(cacheKey, nextPage);
+  expenseReportPageCache.set(cacheKey, {
+    pageData: nextPage,
+    cachedAt: Date.now(),
+  });
+}
+
+/**
+ * 상세 문서 응답을 캐시에 저장합니다.
+ * @param {string} cacheKey
+ * @param {object} nextReport
+ * @returns {void}
+ */
+function setCachedExpenseReportDetail(cacheKey, nextReport) {
+  expenseReportDetailCache.set(cacheKey, {
+    reportData: nextReport,
+    cachedAt: Date.now(),
+  });
 }
 
 /**
@@ -264,6 +355,39 @@ function clearExpenseReportPageCacheForUser(userId) {
       expenseReportPagePrefetchMap.delete(cacheKey);
     }
   });
+}
+
+/**
+ * 현재 사용자의 상세 캐시를 모두 비워 다음 상세 조회가 최신 데이터를 받도록 합니다.
+ * @param {string | undefined} userId
+ * @returns {void}
+ */
+function clearExpenseReportDetailCacheForUser(userId) {
+  if (!userId) {
+    return;
+  }
+
+  const cacheKeyPrefix = `${userId}::`;
+
+  Array.from(expenseReportDetailCache.keys()).forEach((cacheKey) => {
+    if (cacheKey.startsWith(cacheKeyPrefix)) {
+      expenseReportDetailCache.delete(cacheKey);
+    }
+  });
+}
+
+/**
+ * 특정 상세 문서 캐시만 비워 다음 조회에서 최신 데이터를 받도록 합니다.
+ * @param {string | undefined} userId
+ * @param {string} reportId
+ * @returns {void}
+ */
+function clearExpenseReportDetailCacheForReport(userId, reportId) {
+  if (!userId || !reportId) {
+    return;
+  }
+
+  expenseReportDetailCache.delete(createExpenseReportDetailCacheKey({ userId, reportId }));
 }
 
 /**
@@ -329,9 +453,11 @@ const ExpenseReport = () => {
   const [reportPage, setReportPage] = useState(EMPTY_REPORT_PAGE);
   const [loading, setLoading] = useState(true);
   const [pageTransitioning, setPageTransitioning] = useState(false);
+  const [backgroundRefreshing, setBackgroundRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
   const [detailLoadingId, setDetailLoadingId] = useState(null);
+  const [detailRefreshingId, setDetailRefreshingId] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [updatingCheck, setUpdatingCheck] = useState(null);
@@ -340,11 +466,14 @@ const ExpenseReport = () => {
   const listRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
   const hasLoadedListRef = useRef(false);
+  const previousUserIdRef = useRef(user?.id);
 
   const hasActiveFilter = Object.values(filters).some((value) => value !== 'all');
   const reports = reportPage.items || [];
   const showListTransitionState = pageTransitioning && !loading;
+  const showListRefreshingState = backgroundRefreshing && !loading && !pageTransitioning;
   const isDetailLoading = Boolean(detailLoadingId);
+  const isDetailRefreshing = Boolean(detailRefreshingId);
 
   /**
    * 지출결의서 목록을 서버 페이지 데이터 API로 조회합니다.
@@ -354,6 +483,7 @@ const ExpenseReport = () => {
   const fetchReports = useCallback(async () => {
     if (!user?.id) {
       setPageTransitioning(false);
+      setBackgroundRefreshing(false);
       return;
     }
 
@@ -367,7 +497,9 @@ const ExpenseReport = () => {
       limit: REPORTS_PER_PAGE,
       filters: requestFilters,
     });
+    const cachedEntry = getCachedExpenseReportPageEntry(cacheKey);
     const cachedPage = getCachedExpenseReportPage(cacheKey);
+    const isFreshCachedPage = isExpenseReportPageCacheFresh(cachedEntry);
     const requestId = listRequestIdRef.current + 1;
 
     listRequestIdRef.current = requestId;
@@ -376,12 +508,21 @@ const ExpenseReport = () => {
       hasLoadedListRef.current = true;
       setReportPage(cachedPage);
       setLoading(false);
-      setPageTransitioning(true);
+      setPageTransitioning(false);
+
+      if (isFreshCachedPage) {
+        setBackgroundRefreshing(false);
+        return;
+      }
+
+      setBackgroundRefreshing(true);
     } else if (hasLoadedListRef.current) {
       setPageTransitioning(true);
+      setBackgroundRefreshing(false);
     } else {
       setLoading(true);
       setPageTransitioning(false);
+      setBackgroundRefreshing(false);
     }
 
     try {
@@ -410,6 +551,7 @@ const ExpenseReport = () => {
       setCachedExpenseReportPage(resolvedCacheKey, normalizedPage);
       setReportPage(normalizedPage);
       setLoading(false);
+      setBackgroundRefreshing(false);
 
       if (resolvedPage !== requestPage) {
         setCurrentPage(resolvedPage);
@@ -436,6 +578,7 @@ const ExpenseReport = () => {
       if (requestId === listRequestIdRef.current) {
         setLoading(false);
         setPageTransitioning(false);
+        setBackgroundRefreshing(false);
       }
     }
   }, [currentPage, filters, token, user?.id]);
@@ -445,17 +588,53 @@ const ExpenseReport = () => {
   }, [fetchReports]);
 
   /**
+   * 로그인 사용자가 바뀌면 이전 사용자의 상세 캐시를 정리해 세션 간 데이터가 섞이지 않도록 합니다.
+   * @returns {void}
+   */
+  useEffect(() => {
+    const previousUserId = previousUserIdRef.current;
+
+    if (previousUserId && previousUserId !== user?.id) {
+      clearExpenseReportPageCacheForUser(previousUserId);
+      clearExpenseReportDetailCacheForUser(previousUserId);
+    }
+
+    previousUserIdRef.current = user?.id;
+  }, [user?.id]);
+
+  /**
    * 선택한 결의서의 상세 모달을 엽니다.
    * @param {string} reportId
    * @returns {Promise<void>}
    */
   const handleView = async (reportId) => {
     const requestId = detailRequestIdRef.current + 1;
+    const detailCacheKey = createExpenseReportDetailCacheKey({
+      userId: user?.id || 'anonymous',
+      reportId,
+    });
+    const cachedDetailEntry = getCachedExpenseReportDetailEntry(detailCacheKey);
+    const cachedDetail = getCachedExpenseReportDetail(detailCacheKey);
+    const isFreshCachedDetail = isExpenseReportDetailCacheFresh(cachedDetailEntry);
 
     detailRequestIdRef.current = requestId;
-    setDetailLoadingId(reportId);
-    setSelectedReport(null);
     setShowDetail(true);
+
+    if (cachedDetail) {
+      setSelectedReport(cachedDetail);
+      setDetailLoadingId(null);
+
+      if (isFreshCachedDetail) {
+        setDetailRefreshingId(null);
+        return;
+      }
+
+      setDetailRefreshingId(reportId);
+    } else {
+      setDetailLoadingId(reportId);
+      setDetailRefreshingId(null);
+      setSelectedReport(null);
+    }
 
     try {
       const report = await getExpenseReport(reportId, { token });
@@ -464,18 +643,26 @@ const ExpenseReport = () => {
         return;
       }
 
+      if (!report) {
+        throw new Error('상세 문서를 찾을 수 없습니다.');
+      }
+
+      setCachedExpenseReportDetail(detailCacheKey, report);
       setSelectedReport(report);
     } catch (viewError) {
       if (requestId !== detailRequestIdRef.current) {
         return;
       }
 
-      setShowDetail(false);
-      setSelectedReport(null);
-      alert(`상세 조회에 실패했습니다: ${viewError.message}`);
+      if (!cachedDetail) {
+        setShowDetail(false);
+        setSelectedReport(null);
+        alert(`상세 조회에 실패했습니다: ${viewError.message}`);
+      }
     } finally {
       if (requestId === detailRequestIdRef.current) {
         setDetailLoadingId(null);
+        setDetailRefreshingId(null);
       }
     }
   };
@@ -487,6 +674,7 @@ const ExpenseReport = () => {
   const handleCloseDetail = () => {
     detailRequestIdRef.current += 1;
     setDetailLoadingId(null);
+    setDetailRefreshingId(null);
     setShowDetail(false);
     setSelectedReport(null);
   };
@@ -510,6 +698,7 @@ const ExpenseReport = () => {
       await deleteExpenseReport(reportId);
       setDeleteConfirmId(null);
       clearExpenseReportPageCacheForUser(user?.id);
+      clearExpenseReportDetailCacheForReport(user?.id, reportId);
       await fetchReports();
     } catch (deleteError) {
       alert(`삭제에 실패했습니다: ${deleteError.message}`);
@@ -551,6 +740,7 @@ const ExpenseReport = () => {
     try {
       await updateExpenseReportCheck(reportId, field, nextValue, checkerName);
       clearExpenseReportPageCacheForUser(user?.id);
+      clearExpenseReportDetailCacheForReport(user?.id, reportId);
       await fetchReports();
     } catch (updateError) {
       setReportPage((prevPage) => ({
@@ -606,6 +796,28 @@ const ExpenseReport = () => {
       return;
     }
 
+    const nextCacheKey = createExpenseReportPageCacheKey({
+      userId: user?.id || '',
+      page: nextPage,
+      limit: REPORTS_PER_PAGE,
+      filters,
+    });
+    const nextCachedEntry = getCachedExpenseReportPageEntry(nextCacheKey);
+    const nextCachedPage = nextCachedEntry?.pageData || null;
+
+    setError(null);
+
+    if (nextCachedPage) {
+      hasLoadedListRef.current = true;
+      setReportPage(nextCachedPage);
+      setLoading(false);
+      setPageTransitioning(false);
+      setBackgroundRefreshing(!isExpenseReportPageCacheFresh(nextCachedEntry));
+    } else if (hasLoadedListRef.current) {
+      setPageTransitioning(true);
+      setBackgroundRefreshing(false);
+    }
+
     setCurrentPage(nextPage);
   };
 
@@ -644,10 +856,10 @@ const ExpenseReport = () => {
             <h2 className="text-base font-bold text-navy-500">지출결의서 보기</h2>
             <div className="flex items-center gap-2 text-xs text-mist-500">
               <span>총 {reportPage.scope_total_count}건</span>
-              {showListTransitionState && (
+              {showListRefreshingState && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 font-semibold text-navy-500">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  목록 업데이트 중
+                  목록 최신화 중
                 </span>
               )}
             </div>
@@ -930,12 +1142,14 @@ const ExpenseReport = () => {
           {reportPage.total_pages > 1 && (
             <div className="flex flex-col items-center gap-2 pt-1">
               <div className="flex items-center gap-1.5 text-xs text-mist-400">
-                {showListTransitionState && (
+                {(showListTransitionState || showListRefreshingState) && (
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-navy-400" />
                 )}
                 <span>
                   {showListTransitionState
                     ? `${currentPage}페이지를 불러오는 중`
+                    : showListRefreshingState
+                      ? `${reportPage.page}페이지 최신 정보를 확인하는 중`
                     : `${reportPage.page} / ${reportPage.total_pages} 페이지`}
                 </span>
               </div>
@@ -1017,6 +1231,7 @@ const ExpenseReport = () => {
           key={selectedReport?.id || detailLoadingId || 'detail-loading'}
           report={selectedReport}
           loading={isDetailLoading}
+          refreshing={isDetailRefreshing}
           onClose={handleCloseDetail}
         />
       )}

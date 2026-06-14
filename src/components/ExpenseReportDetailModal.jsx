@@ -593,7 +593,7 @@ function DesktopExpenseReportSheet({
 
 /**
  * 지출결의서 상세 조회와 인쇄용 양식을 렌더링하는 모달입니다.
- * @param {{ report: object | null, loading?: boolean, onClose: () => void }} props
+ * @param {{ report: object | null, loading?: boolean, refreshing?: boolean, onClose: () => void }} props
  * @returns {JSX.Element | null}
  */
 /**
@@ -638,7 +638,7 @@ function DetailLoadingView() {
   );
 }
 
-const ExpenseReportDetailModal = ({ report, loading = false, onClose }) => {
+const ExpenseReportDetailModal = ({ report, loading = false, refreshing = false, onClose }) => {
   const receipts = report?.expense_receipts ?? EMPTY_RECEIPTS;
   const [receiptOrientations, setReceiptOrientations] = useState({});
   const isLoadingView = loading || !report;
@@ -749,9 +749,17 @@ const ExpenseReportDetailModal = ({ report, loading = false, onClose }) => {
 
       <div className="expense-report-modal relative z-10 mx-auto my-4 w-full max-w-[860px] rounded-2xl bg-white shadow-2xl">
         <div className="expense-report-screen-only sticky top-0 z-10 flex items-center justify-between rounded-t-2xl border-b border-black bg-white px-4 py-3">
-          <h2 className="text-base font-bold text-black">
-            {isLoadingView ? '지출결의서 상세 불러오는 중' : '지출결의서 상세'}
-          </h2>
+          <div>
+            <h2 className="text-base font-bold text-black">
+              {isLoadingView ? '지출결의서 상세 불러오는 중' : '지출결의서 상세'}
+            </h2>
+            {refreshing && !isLoadingView && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 text-[11px] font-semibold text-navy-500">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                최신 정보 확인 중
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
