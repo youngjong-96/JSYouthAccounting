@@ -97,9 +97,8 @@ function normalizeExpenseReportFilters(filters = {}) {
 }
 
 /**
- * 지출결의서 읽기 API URL을 목록 또는 상세 조회 형태로 조합합니다.
+ * 지출결의서 목록 조회용 API URL을 조합합니다.
  * @param {{
- *   reportId?: string | null,
  *   page?: number,
  *   limit?: number,
  *   filters?: {
@@ -110,49 +109,45 @@ function normalizeExpenseReportFilters(filters = {}) {
  * }} options
  * @returns {string}
  */
-function buildExpenseReportsReadUrl(options = {}) {
+function buildExpenseReportsListUrl(options = {}) {
   const {
-    reportId = null,
     page = 1,
     limit = 5,
     filters = {},
   } = options;
 
+  const normalizedFilters = normalizeExpenseReportFilters(filters);
   const params = new URLSearchParams();
 
-  if (reportId) {
-    params.set('id', reportId);
-  } else {
-    const normalizedFilters = normalizeExpenseReportFilters(filters);
-    params.set('page', String(page));
-    params.set('limit', String(limit));
-    params.set('director_confirmed', normalizedFilters.director_confirmed);
-    params.set('payment_completed', normalizedFilters.payment_completed);
-    params.set('print_completed', normalizedFilters.print_completed);
-  }
+  params.set('page', String(page));
+  params.set('limit', String(limit));
+  params.set('director_confirmed', normalizedFilters.director_confirmed);
+  params.set('payment_completed', normalizedFilters.payment_completed);
+  params.set('print_completed', normalizedFilters.print_completed);
 
   return `${API_URL}/api/expense/reports?${params.toString()}`;
 }
 
 /**
- * 지출결의서 읽기 API를 호출하고 응답 JSON을 반환합니다.
- * @param {{
- *   reportId?: string | null,
- *   page?: number,
- *   limit?: number,
- *   filters?: {
- *     director_confirmed?: string,
- *     payment_completed?: string,
- *     print_completed?: string
- *   },
- *   token?: string | null
- * }} options
+ * 지출결의서 상세 조회용 API URL을 조합합니다.
+ * @param {string} reportId
+ * @returns {string}
+ */
+function buildExpenseReportDetailUrl(reportId) {
+  const params = new URLSearchParams();
+  params.set('id', reportId);
+  return `${API_URL}/api/expense/report_detail?${params.toString()}`;
+}
+
+/**
+ * 지출결의서 읽기 API 공통 요청을 보내고 응답 JSON을 반환합니다.
+ * @param {string} url
+ * @param {string | null | undefined} token
  * @returns {Promise<object>}
  */
-async function requestExpenseReportsRead(options = {}) {
-  const { token = null } = options;
+async function requestExpenseReadJson(url, token) {
   const accessToken = await getExpenseReadAccessToken(token);
-  const response = await fetch(buildExpenseReportsReadUrl(options), {
+  const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -171,6 +166,36 @@ async function requestExpenseReportsRead(options = {}) {
   }
 
   return result;
+}
+
+/**
+ * 지출결의서 목록 조회 API를 호출합니다.
+ * @param {{
+ *   page?: number,
+ *   limit?: number,
+ *   filters?: {
+ *     director_confirmed?: string,
+ *     payment_completed?: string,
+ *     print_completed?: string
+ *   },
+ *   token?: string | null
+ * }} options
+ * @returns {Promise<object>}
+ */
+async function requestExpenseReportsList(options = {}) {
+  const { token = null } = options;
+  return requestExpenseReadJson(buildExpenseReportsListUrl(options), token);
+}
+
+/**
+ * 지출결의서 상세 조회 API를 호출합니다.
+ * @param {string} reportId
+ * @param {{ token?: string | null }} options
+ * @returns {Promise<object>}
+ */
+async function requestExpenseReportDetail(reportId, options = {}) {
+  const { token = null } = options;
+  return requestExpenseReadJson(buildExpenseReportDetailUrl(reportId), token);
 }
 
 /**
@@ -385,7 +410,7 @@ export async function getExpenseReports(options = {}) {
     filters = {},
   } = options;
 
-  return requestExpenseReportsRead({
+  return requestExpenseReportsList({
     token,
     page,
     limit,
@@ -400,8 +425,7 @@ export async function getExpenseReports(options = {}) {
  * @returns {Promise<object>}
  */
 export async function getExpenseReport(id, options = {}) {
-  const { token = null } = options;
-  return requestExpenseReportsRead({ reportId: id, token });
+  return requestExpenseReportDetail(id, options);
 }
 
 /**

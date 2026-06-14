@@ -195,33 +195,6 @@ def build_report_list_items(sb, reports):
     ]
 
 
-def fetch_report_detail(sb, requester, report_id):
-    """권한 범위 안에서 지출결의서 상세 1건을 조회합니다."""
-    query = (
-        sb.table("expense_reports")
-        .select(
-            """
-            *,
-            expense_items (*),
-            expense_receipts (*)
-            """
-        )
-        .eq("id", report_id)
-    )
-    query = apply_scope_filter(query, requester)
-    result = query.single().execute()
-    report = result.data
-
-    if not report:
-        return None
-
-    author_name_map = build_author_name_map(sb, [report])
-    return {
-        **report,
-        "author_name": author_name_map.get(report.get("user_id")) or "",
-    }
-
-
 def fetch_report_list(sb, requester, params):
     """목록 페이지에 필요한 경량 데이터와 페이지 정보를 함께 조회합니다."""
     page = parse_positive_int(params.get("page", [DEFAULT_PAGE])[0], DEFAULT_PAGE)
@@ -288,7 +261,7 @@ def fetch_report_list(sb, requester, params):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        """요청자의 역할에 맞는 지출결의서 목록 또는 상세 데이터를 반환합니다."""
+        """요청자의 역할에 맞는 지출결의서 목록 데이터를 반환합니다."""
         auth_header = self.headers.get("Authorization", "")
         requester = get_request_user(auth_header)
 
@@ -298,19 +271,16 @@ class handler(BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
-        report_id = params.get("id", [None])[0]
 
         try:
-            sb = get_supabase()
-
-            if report_id:
-                report_detail = fetch_report_detail(sb, requester, report_id)
-                if not report_detail:
-                    self._send_json({"error": "Expense report not found"}, 404)
-                    return
-
-                self._send_json(report_detail, 200)
+            if "id" in params:
+                self._send_json(
+                    {"error": "Expense report detail must be requested from /api/expense/report_detail"},
+                    400,
+                )
                 return
+
+            sb = get_supabase()
 
             self._send_json(fetch_report_list(sb, requester, params), 200)
         except Exception as error:
