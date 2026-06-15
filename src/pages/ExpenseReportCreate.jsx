@@ -18,6 +18,7 @@ import {
   getExpenseReport,
   updateExpenseReport,
 } from '../lib/expenseReportService';
+import { writeExpenseReportCacheInvalidation } from '../lib/expenseReportCacheInvalidation';
 import { uploadReceipt } from '../lib/uploadReceipt';
 import { useAuth } from '../context/AuthContext';
 import guideImg from '../assets/guide.png';
@@ -435,6 +436,7 @@ const ExpenseReportCreate = () => {
     setSaving(true);
 
     try {
+      let savedReport = null;
       const nextItems = prepareItemsForSave(items, status);
       const uploadTargetId = reportId || crypto.randomUUID();
       const uploadedReceipts = receiptFiles.length > 0
@@ -456,11 +458,16 @@ const ExpenseReportCreate = () => {
       };
 
       if (isEditMode) {
-        await updateExpenseReport(reportId, reportPayload, nextItems, savedReceipts);
+        savedReport = await updateExpenseReport(reportId, reportPayload, nextItems, savedReceipts);
       } else {
-        await createExpenseReport(reportPayload, nextItems, uploadedReceipts);
+        savedReport = await createExpenseReport(reportPayload, nextItems, uploadedReceipts);
       }
 
+      writeExpenseReportCacheInvalidation({
+        userId: user?.id,
+        reportId: savedReport?.id || reportId || null,
+        reason: status,
+      });
       setSuccessMsg(status === 'draft' ? '임시 저장되었습니다.' : '제출되었습니다.');
       setTimeout(() => navigate('/expense'), 1200);
     } catch (saveError) {
