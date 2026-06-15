@@ -18,6 +18,14 @@ import {
   getExpenseReports,
   updateExpenseReportCheck,
 } from '../lib/expenseReportService';
+import {
+  clearExpenseReportCacheInvalidation,
+  readExpenseReportCacheInvalidation,
+} from '../lib/expenseReportCacheInvalidation';
+import {
+  completeExpenseReportPerformanceMeasurement,
+  startExpenseReportPerformanceMeasurement,
+} from '../lib/expenseReportPerformance';
 import ExpenseReportDetailModal from '../components/ExpenseReportDetailModal';
 import { useAuth } from '../context/AuthContext';
 
@@ -501,25 +509,71 @@ const ExpenseReport = () => {
     const cachedPage = getCachedExpenseReportPage(cacheKey);
     const isFreshCachedPage = isExpenseReportPageCacheFresh(cachedEntry);
     const requestId = listRequestIdRef.current + 1;
+    const listHasActiveFilter = Object.values(requestFilters).some((value) => value !== 'all');
+    const listDisplayScenario = hasLoadedListRef.current || Boolean(cachedPage) ? 'revisit' : 'initial';
+    let listDisplayMeasurement = null;
+    let listRefreshMeasurement = null;
 
     listRequestIdRef.current = requestId;
 
     if (cachedPage) {
+      listDisplayMeasurement = startExpenseReportPerformanceMeasurement({
+        metric: 'list_display',
+        meta: {
+          scenario: listDisplayScenario,
+          cacheState: isFreshCachedPage ? 'fresh' : 'stale',
+          page: requestPage,
+          hasActiveFilter: listHasActiveFilter,
+        },
+      });
       hasLoadedListRef.current = true;
       setReportPage(cachedPage);
       setLoading(false);
       setPageTransitioning(false);
+      completeExpenseReportPerformanceMeasurement(listDisplayMeasurement, {
+        meta: {
+          totalCount: cachedPage.total_count || 0,
+        },
+      });
+      listDisplayMeasurement = null;
 
       if (isFreshCachedPage) {
         setBackgroundRefreshing(false);
         return;
       }
 
+      listRefreshMeasurement = startExpenseReportPerformanceMeasurement({
+        metric: 'list_refresh',
+        meta: {
+          scenario: listDisplayScenario,
+          cacheState: 'stale',
+          page: requestPage,
+          hasActiveFilter: listHasActiveFilter,
+        },
+      });
       setBackgroundRefreshing(true);
     } else if (hasLoadedListRef.current) {
+      listDisplayMeasurement = startExpenseReportPerformanceMeasurement({
+        metric: 'list_display',
+        meta: {
+          scenario: listDisplayScenario,
+          cacheState: 'miss',
+          page: requestPage,
+          hasActiveFilter: listHasActiveFilter,
+        },
+      });
       setPageTransitioning(true);
       setBackgroundRefreshing(false);
     } else {
+      listDisplayMeasurement = startExpenseReportPerformanceMeasurement({
+        metric: 'list_display',
+        meta: {
+          scenario: listDisplayScenario,
+          cacheState: 'miss',
+          page: requestPage,
+          hasActiveFilter: listHasActiveFilter,
+        },
+      });
       setLoading(true);
       setPageTransitioning(false);
       setBackgroundRefreshing(false);
@@ -534,6 +588,18 @@ const ExpenseReport = () => {
       });
 
       if (requestId !== listRequestIdRef.current) {
+        completeExpenseReportPerformanceMeasurement(listDisplayMeasurement, {
+          outcome: 'canceled',
+          meta: {
+            page: requestPage,
+          },
+        });
+        completeExpenseReportPerformanceMeasurement(listRefreshMeasurement, {
+          outcome: 'canceled',
+          meta: {
+            page: requestPage,
+          },
+        });
         return;
       }
 
@@ -552,6 +618,20 @@ const ExpenseReport = () => {
       setReportPage(normalizedPage);
       setLoading(false);
       setBackgroundRefreshing(false);
+      completeExpenseReportPerformanceMeasurement(listDisplayMeasurement, {
+        meta: {
+          totalCount: normalizedPage.total_count || 0,
+          totalPages: normalizedPage.total_pages || 1,
+        },
+      });
+      listDisplayMeasurement = null;
+      completeExpenseReportPerformanceMeasurement(listRefreshMeasurement, {
+        meta: {
+          totalCount: normalizedPage.total_count || 0,
+          totalPages: normalizedPage.total_pages || 1,
+        },
+      });
+      listRefreshMeasurement = null;
 
       if (resolvedPage !== requestPage) {
         setCurrentPage(resolvedPage);
@@ -568,8 +648,35 @@ const ExpenseReport = () => {
       }
     } catch (fetchError) {
       if (requestId !== listRequestIdRef.current) {
+        completeExpenseReportPerformanceMeasurement(listDisplayMeasurement, {
+          outcome: 'canceled',
+          meta: {
+            page: requestPage,
+          },
+        });
+        completeExpenseReportPerformanceMeasurement(listRefreshMeasurement, {
+          outcome: 'canceled',
+          meta: {
+            page: requestPage,
+          },
+        });
         return;
       }
+
+      completeExpenseReportPerformanceMeasurement(listDisplayMeasurement, {
+        outcome: 'failed',
+        meta: {
+          page: requestPage,
+          errorMessage: fetchError.message,
+        },
+      });
+      completeExpenseReportPerformanceMeasurement(listRefreshMeasurement, {
+        outcome: 'failed',
+        meta: {
+          page: requestPage,
+          errorMessage: fetchError.message,
+        },
+      });
 
       if (!cachedPage) {
         setError(fetchError.message);
@@ -582,6 +689,30 @@ const ExpenseReport = () => {
       }
     }
   }, [currentPage, filters, token, user?.id]);
+
+  /**
+   * 작성/수정/제출 후 복귀한 경우 세션에 남긴 무효화 신호를 읽어 관련 캐시를 먼저 정리합니다.
+   * @returns {void}
+   */
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    const invalidationSignal = readExpenseReportCacheInvalidation();
+
+    if (!invalidationSignal || invalidationSignal.userId !== user.id) {
+      return;
+    }
+
+    clearExpenseReportPageCacheForUser(user.id);
+
+    if (invalidationSignal.reportId) {
+      clearExpenseReportDetailCacheForReport(user.id, invalidationSignal.reportId);
+    }
+
+    clearExpenseReportCacheInvalidation();
+  }, [user?.id]);
 
   useEffect(() => {
     void fetchReports();
@@ -616,21 +747,55 @@ const ExpenseReport = () => {
     const cachedDetailEntry = getCachedExpenseReportDetailEntry(detailCacheKey);
     const cachedDetail = getCachedExpenseReportDetail(detailCacheKey);
     const isFreshCachedDetail = isExpenseReportDetailCacheFresh(cachedDetailEntry);
+    const detailDisplayScenario = cachedDetail ? 'reopen' : 'first-open';
+    let detailDisplayMeasurement = null;
+    let detailRefreshMeasurement = null;
 
     detailRequestIdRef.current = requestId;
     setShowDetail(true);
 
     if (cachedDetail) {
+      detailDisplayMeasurement = startExpenseReportPerformanceMeasurement({
+        metric: 'detail_display',
+        meta: {
+          scenario: detailDisplayScenario,
+          cacheState: isFreshCachedDetail ? 'fresh' : 'stale',
+          reportId,
+        },
+      });
       setSelectedReport(cachedDetail);
       setDetailLoadingId(null);
+      completeExpenseReportPerformanceMeasurement(detailDisplayMeasurement, {
+        meta: {
+          receiptCount: cachedDetail.expense_receipts?.length || 0,
+          itemCount: cachedDetail.expense_items?.length || 0,
+        },
+      });
+      detailDisplayMeasurement = null;
 
       if (isFreshCachedDetail) {
         setDetailRefreshingId(null);
         return;
       }
 
+      detailRefreshMeasurement = startExpenseReportPerformanceMeasurement({
+        metric: 'detail_refresh',
+        meta: {
+          scenario: detailDisplayScenario,
+          cacheState: 'stale',
+          reportId,
+        },
+      });
       setDetailRefreshingId(reportId);
     } else {
+      detailDisplayMeasurement = startExpenseReportPerformanceMeasurement({
+        metric: 'detail_display',
+        meta: {
+          scenario: detailDisplayScenario,
+          cacheState: 'miss',
+          reportId,
+        },
+      });
       setDetailLoadingId(reportId);
       setDetailRefreshingId(null);
       setSelectedReport(null);
@@ -640,6 +805,14 @@ const ExpenseReport = () => {
       const report = await getExpenseReport(reportId, { token });
 
       if (requestId !== detailRequestIdRef.current) {
+        completeExpenseReportPerformanceMeasurement(detailDisplayMeasurement, {
+          outcome: 'canceled',
+          meta: { reportId },
+        });
+        completeExpenseReportPerformanceMeasurement(detailRefreshMeasurement, {
+          outcome: 'canceled',
+          meta: { reportId },
+        });
         return;
       }
 
@@ -649,10 +822,47 @@ const ExpenseReport = () => {
 
       setCachedExpenseReportDetail(detailCacheKey, report);
       setSelectedReport(report);
+      completeExpenseReportPerformanceMeasurement(detailDisplayMeasurement, {
+        meta: {
+          receiptCount: report.expense_receipts?.length || 0,
+          itemCount: report.expense_items?.length || 0,
+        },
+      });
+      detailDisplayMeasurement = null;
+      completeExpenseReportPerformanceMeasurement(detailRefreshMeasurement, {
+        meta: {
+          receiptCount: report.expense_receipts?.length || 0,
+          itemCount: report.expense_items?.length || 0,
+        },
+      });
+      detailRefreshMeasurement = null;
     } catch (viewError) {
       if (requestId !== detailRequestIdRef.current) {
+        completeExpenseReportPerformanceMeasurement(detailDisplayMeasurement, {
+          outcome: 'canceled',
+          meta: { reportId },
+        });
+        completeExpenseReportPerformanceMeasurement(detailRefreshMeasurement, {
+          outcome: 'canceled',
+          meta: { reportId },
+        });
         return;
       }
+
+      completeExpenseReportPerformanceMeasurement(detailDisplayMeasurement, {
+        outcome: 'failed',
+        meta: {
+          reportId,
+          errorMessage: viewError.message,
+        },
+      });
+      completeExpenseReportPerformanceMeasurement(detailRefreshMeasurement, {
+        outcome: 'failed',
+        meta: {
+          reportId,
+          errorMessage: viewError.message,
+        },
+      });
 
       if (!cachedDetail) {
         setShowDetail(false);
