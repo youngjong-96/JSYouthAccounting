@@ -23,13 +23,10 @@ const Dashboard = () => {
 
   const isUserManagement = location.pathname === '/users';
   const isExpensePage = location.pathname.startsWith('/expense');
-  const isExpenseListPage = location.pathname === '/expense';
   const isBoardPage = location.pathname.startsWith('/board');
   const isMyPage = location.pathname === '/mypage';
   const showFilter = !isUserManagement && !isExpensePage && !isBoardPage && !isMyPage;
-  const mainClassName = isExpenseListPage
-    ? 'flex-1 w-full px-4 py-6 sm:px-6 md:max-w-[1120px] lg:max-w-[1320px] xl:max-w-[1480px] 2xl:max-w-[1640px] xl:px-8 mx-auto'
-    : 'flex-1 px-4 sm:px-6 py-6 max-w-4xl w-full mx-auto';
+  const mainClassName = 'flex-1 w-full px-4 py-6 sm:px-6 md:max-w-[1120px] lg:max-w-[1320px] xl:max-w-[1480px] 2xl:max-w-[1640px] xl:px-8 mx-auto';
 
   /**
    * 선택한 기간 기준으로 재정 요약 데이터를 조회합니다.
@@ -108,61 +105,63 @@ const Dashboard = () => {
                 <h2 className="text-sm font-semibold text-navy-500 uppercase tracking-wider">조회 필터</h2>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                <div className="relative">
-                  <select
-                    value={year}
-                    onChange={(event) => setYear(event.target.value)}
-                    className={selectClass}
-                  >
-                    {[2024, 2025, 2026, 2027].map((itemYear) => (
-                      <option key={itemYear} value={itemYear}>{itemYear}년</option>
-                    ))}
-                  </select>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                <div className="grid grid-cols-3 gap-2 lg:flex-1">
+                  <div className="relative">
+                    <select
+                      value={year}
+                      onChange={(event) => setYear(event.target.value)}
+                      className={selectClass}
+                    >
+                      {[2024, 2025, 2026, 2027].map((itemYear) => (
+                        <option key={itemYear} value={itemYear}>{itemYear}년</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="relative">
+                    <select
+                      value={month}
+                      onChange={(event) => setMonth(event.target.value)}
+                      className={selectClass}
+                    >
+                      <option value="">전체</option>
+                      {[...Array(12).keys()].map((itemMonth) => (
+                        <option key={itemMonth + 1} value={itemMonth + 1}>{itemMonth + 1}월</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="relative">
+                    <select
+                      value={week}
+                      onChange={(event) => setWeek(event.target.value)}
+                      className={selectClass}
+                    >
+                      <option value="">전체</option>
+                      {[1, 2, 3, 4, 5].map((itemWeek) => (
+                        <option key={itemWeek} value={itemWeek}>{itemWeek}주차</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="relative">
-                  <select
-                    value={month}
-                    onChange={(event) => setMonth(event.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">전체</option>
-                    {[...Array(12).keys()].map((itemMonth) => (
-                      <option key={itemMonth + 1} value={itemMonth + 1}>{itemMonth + 1}월</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="relative">
-                  <select
-                    value={week}
-                    onChange={(event) => setWeek(event.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">전체</option>
-                    {[1, 2, 3, 4, 5].map((itemWeek) => (
-                      <option key={itemWeek} value={itemWeek}>{itemWeek}주차</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
 
-              <button
-                onClick={fetchSummary}
-                disabled={loading}
-                className="w-full py-3 bg-navy-500 hover:bg-navy-600 active:bg-navy-700 text-white font-semibold rounded-xl transition-all shadow-sm shadow-navy-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    불러오는 중...
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-4 h-4" />
-                    조회하기
-                  </>
-                )}
-              </button>
+                <button
+                  onClick={fetchSummary}
+                  disabled={loading}
+                  className="w-full py-3 bg-navy-500 hover:bg-navy-600 active:bg-navy-700 text-white font-semibold rounded-xl transition-all shadow-sm shadow-navy-500/20 disabled:opacity-50 flex items-center justify-center gap-2 lg:w-[170px] lg:flex-shrink-0"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      불러오는 중...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4" />
+                      조회하기
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
 
