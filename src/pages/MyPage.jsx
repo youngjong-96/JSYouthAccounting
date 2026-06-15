@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { updateMyProfile } from '../lib/profileService';
 import { useAuth } from '../context/AuthContext';
 import { User, KeyRound, Save, CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react';
 
@@ -19,7 +20,7 @@ function Toast({ message, type }) {
 }
 
 const MyPage = () => {
-  const { user } = useAuth();
+  const { user, token, refreshProfile } = useAuth();
 
   /* ── 회원정보 수정 ── */
   const [profile, setProfile] = useState({
@@ -37,15 +38,37 @@ const MyPage = () => {
     e.preventDefault();
     setProfileLoading(true);
     setProfileMsg({ text: '', type: '' });
+
+    const nextName = profile.name.trim();
+
+    if (!nextName) {
+      setProfileMsg({ text: '이름은 비워둘 수 없습니다.', type: 'error' });
+      setProfileLoading(false);
+      return;
+    }
+
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ name: profile.name, organization: profile.organization, contact: profile.contact })
-        .eq('id', user.id);
-      if (error) throw error;
+      const updatedProfile = await updateMyProfile({
+        name: nextName,
+        organization: profile.organization,
+        contact: profile.contact,
+      }, { token });
+
+      setProfile({
+        name: updatedProfile.name || '',
+        organization: updatedProfile.organization || '',
+        contact: updatedProfile.contact || '',
+      });
+
+      try {
+        await refreshProfile();
+      } catch {
+        /* 전역 사용자 상태 새로고침이 실패해도 저장 결과 자체는 유지합니다. */
+      }
+
       setProfileMsg({ text: '회원정보가 저장되었습니다.', type: 'success' });
-    } catch (e) {
-      setProfileMsg({ text: '저장에 실패했습니다: ' + e.message, type: 'error' });
+    } catch (error) {
+      setProfileMsg({ text: '저장에 실패했습니다: ' + error.message, type: 'error' });
     } finally {
       setProfileLoading(false);
     }
