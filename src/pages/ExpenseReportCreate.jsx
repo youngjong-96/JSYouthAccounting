@@ -260,6 +260,16 @@ function validateForSubmit({ resolutionDate, items, totalAmount }) {
   return true;
 }
 
+/**
+ * 제출 전에 최종 확인 메시지를 보여주고 계속 진행할지 확인합니다.
+ * @returns {boolean}
+ */
+function confirmExpenseReportSubmission() {
+  return window.confirm(
+    '정말 제출하시겠습니까?\n제출 후에는 수정할 수 없습니다.\n이후 수정을 원하시면 [임시 저장] 버튼을 이용해주세요.',
+  );
+}
+
 /* ========================================= */
 const ExpenseReportCreate = () => {
   const navigate = useNavigate();
@@ -430,6 +440,10 @@ const ExpenseReportCreate = () => {
    */
   const handleSave = async (status = 'draft') => {
     if (status === 'submitted' && !validateForSubmit({ resolutionDate, items, totalAmount })) {
+      return;
+    }
+
+    if (status === 'submitted' && !confirmExpenseReportSubmission()) {
       return;
     }
 
