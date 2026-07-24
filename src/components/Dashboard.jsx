@@ -1,11 +1,56 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Filter, Loader2, LogOut, Menu, Search } from 'lucide-react';
+import { Filter, Loader2, LogOut, Menu, Search, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const LOGIN_NOTICE_SESSION_KEY = 'post-login-support-notice-dismissed';
+
+/**
+ * 로그인 공지 팝업 상태를 sessionStorage에 저장할 수 있는지 확인합니다.
+ * @returns {boolean}
+ */
+function canUseLoginNoticeSessionStorage() {
+  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+}
+
+/**
+ * 현재 로그인 세션에서 공지 팝업을 이미 닫았는지 확인합니다.
+ * @returns {boolean}
+ */
+function hasDismissedLoginNotice() {
+  if (!canUseLoginNoticeSessionStorage()) {
+    return false;
+  }
+
+  return window.sessionStorage.getItem(LOGIN_NOTICE_SESSION_KEY) === '1';
+}
+
+/**
+ * 현재 로그인 세션에서 공지 팝업을 닫았다는 상태를 기록합니다.
+ * @returns {void}
+ */
+function markLoginNoticeDismissed() {
+  if (!canUseLoginNoticeSessionStorage()) {
+    return;
+  }
+
+  window.sessionStorage.setItem(LOGIN_NOTICE_SESSION_KEY, '1');
+}
+
+/**
+ * 로그아웃 시 다음 로그인에서 공지 팝업이 다시 보이도록 상태를 초기화합니다.
+ * @returns {void}
+ */
+function clearLoginNoticeDismissed() {
+  if (!canUseLoginNoticeSessionStorage()) {
+    return;
+  }
+
+  window.sessionStorage.removeItem(LOGIN_NOTICE_SESSION_KEY);
+}
 
 /**
  * 앱의 공통 레이아웃과 요약 조회 필터를 렌더링합니다.
@@ -18,7 +63,8 @@ const Dashboard = () => {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [week, setWeek] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
-  const { logout, token } = useAuth();
+  const [showLoginNotice, setShowLoginNotice] = useState(false);
+  const { logout, token, user } = useAuth();
   const location = useLocation();
 
   const isUserManagement = location.pathname === '/users';
@@ -52,6 +98,36 @@ const Dashboard = () => {
     }
   };
 
+  /**
+   * 로그인 직후 공지 팝업을 한 번 보여줄지 결정합니다.
+   * @returns {void}
+   */
+  useEffect(() => {
+    if (!user?.id || hasDismissedLoginNotice()) {
+      return;
+    }
+
+    setShowLoginNotice(true);
+  }, [user?.id]);
+
+  /**
+   * 로그인 공지 팝업을 닫고 현재 세션에서 다시 보이지 않도록 기록합니다.
+   * @returns {void}
+   */
+  const handleCloseLoginNotice = () => {
+    setShowLoginNotice(false);
+    markLoginNoticeDismissed();
+  };
+
+  /**
+   * 로그아웃 전에 공지 팝업 표시 상태를 초기화한 뒤 세션을 종료합니다.
+   * @returns {Promise<void>}
+   */
+  const handleLogout = async () => {
+    clearLoginNoticeDismissed();
+    await logout();
+  };
+
   const selectClass = 'w-full px-3 py-2.5 bg-white border-2 border-mist-200 rounded-xl text-navy-500 font-medium focus:outline-none focus:border-gold-400 transition-all text-[16px] appearance-none';
 
   return (
@@ -83,7 +159,7 @@ const Dashboard = () => {
 
               <div className="flex items-center">
                 <button
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="flex items-center gap-1.5 px-3 py-2 text-white/60 hover:text-white hover:bg-white/10 rounded-xl transition-colors text-sm"
                   title="로그아웃"
                 >
@@ -189,6 +265,51 @@ const Dashboard = () => {
           ) : null}
         </main>
       </div>
+
+      {showLoginNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-navy-900/60 backdrop-blur-sm"
+            onClick={handleCloseLoginNotice}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-mist-200 bg-white shadow-2xl shadow-navy-900/20 animate-slideUp">
+            <div className="flex items-center justify-between gap-3 border-b border-mist-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold-500">공지사항</p>
+                <h2 className="mt-1 text-base font-bold text-navy-500">시스템 이용 문의 안내</h2>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseLoginNotice}
+                className="rounded-xl p-2 text-mist-400 transition-colors hover:bg-cream-100 hover:text-navy-500"
+                aria-label="공지사항 닫기"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5 text-sm leading-7 text-mist-600">
+              <p>
+                시스템 이용 중 문의사항이나 불편사항은 아래로 문의해 주세요.
+              </p>
+              <div className="rounded-2xl bg-cream-100 px-4 py-4">
+                <p><span className="font-semibold text-navy-500">담당자:</span> 이영종</p>
+                <p><span className="font-semibold text-navy-500">연락처:</span> 010-6798-4260</p>
+              </div>
+            </div>
+
+            <div className="border-t border-mist-100 bg-cream-100/60 px-5 py-4">
+              <button
+                type="button"
+                onClick={handleCloseLoginNotice}
+                className="w-full rounded-2xl bg-navy-500 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-navy-600"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
