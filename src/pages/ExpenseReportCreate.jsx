@@ -19,7 +19,14 @@ import {
   updateExpenseReport,
 } from '../lib/expenseReportService';
 import { writeExpenseReportCacheInvalidation } from '../lib/expenseReportCacheInvalidation';
-import { uploadReceipt } from '../lib/uploadReceipt';
+import {
+  deleteReceipt,
+  getReceiptUploadMaxCount,
+  getReceiptUploadMaxFileSizeMb,
+  getReceiptUploadRecommendedSplitCount,
+  getReceiptUploadValidationError,
+  uploadReceipt,
+} from '../lib/uploadReceipt';
 import { useAuth } from '../context/AuthContext';
 import guideImg from '../assets/guide.png';
 
@@ -37,6 +44,10 @@ const inputCls = 'w-full px-3 py-2.5 bg-white border-2 border-mist-200 rounded-x
 
 /* 라벨 공통 스타일입니다. */
 const labelCls = 'block text-xs font-medium text-navy-400 mb-1.5 uppercase tracking-wider';
+
+const RECEIPT_UPLOAD_MAX_FILE_SIZE_MB = getReceiptUploadMaxFileSizeMb();
+const RECEIPT_UPLOAD_RECOMMENDED_SPLIT_COUNT = getReceiptUploadRecommendedSplitCount();
+const RECEIPT_UPLOAD_MAX_COUNT = getReceiptUploadMaxCount();
 
 /* 계정과목 선택 목록입니다. */
 const ACCOUNT_CATEGORIES = [
@@ -270,6 +281,126 @@ function confirmExpenseReportSubmission() {
   );
 }
 
+/**
+ * 첨부 단계에서 제외된 영수증 파일 목록을 사용자에게 안내하는 문구를 생성합니다.
+ * @param {Array<{ fileName: string, reason: string }>} rejectedFiles
+ * @returns {string}
+ */
+function buildRejectedReceiptSelectionMessage(rejectedFiles) {
+  return [
+    '다음 영수증은 첨부되지 않았습니다.',
+    ...rejectedFiles.map((file) => `- ${file.fileName}: ${file.reason}`),
+  ].join('\n');
+}
+
+/**
+ * 업로드 단계에서 실패한 영수증 파일 목록을 사용자에게 안내하는 문구를 생성합니다.
+ * @param {Array<{ fileName: string, reason: string }>} failedUploads
+ * @returns {string}
+ */
+function buildReceiptUploadFailureMessage(failedUploads) {
+  return [
+    '다음 영수증 업로드에 실패했습니다.',
+    ...failedUploads.map((file) => `- ${file.fileName}: ${file.reason}`),
+  ].join('\n');
+}
+
+/**
+ * 현재 첨부 수와 선택된 파일 목록을 기준으로 첨부 가능 여부를 검사합니다.
+ * @param {File[]} files
+ * @param {number} currentReceiptCount
+ * @returns {{
+ *   acceptedFiles: File[],
+ *   rejectedFiles: Array<{ fileName: string, reason: string }>,
+ *   limitErrorMessage: string
+ * }}
+ */
+function validateReceiptSelection(files, currentReceiptCount) {
+  const availableSlots = Math.max(0, RECEIPT_UPLOAD_MAX_COUNT - currentReceiptCount);
+
+  if (availableSlots <= 0) {
+    return {
+      acceptedFiles: [],
+      rejectedFiles: [],
+      limitErrorMessage: `영수증은 최대 ${RECEIPT_UPLOAD_MAX_COUNT}개까지 첨부할 수 있습니다.`,
+    };
+  }
+
+  if (files.length > availableSlots) {
+    return {
+      acceptedFiles: [],
+      rejectedFiles: [],
+      limitErrorMessage: `영수증은 최대 ${RECEIPT_UPLOAD_MAX_COUNT}개까지 첨부할 수 있습니다. 현재 ${currentReceiptCount}개가 첨부되어 있어 ${availableSlots}개만 더 추가할 수 있습니다.`,
+    };
+  }
+
+  return files.reduce((result, file) => {
+    const validationError = getReceiptUploadValidationError(file);
+
+    if (validationError) {
+      result.rejectedFiles.push({
+        fileName: file.name,
+        reason: validationError,
+      });
+      return result;
+    }
+
+    result.acceptedFiles.push(file);
+    return result;
+  }, {
+    acceptedFiles: [],
+    rejectedFiles: [],
+    limitErrorMessage: '',
+  });
+}
+
+/**
+ * 영수증 개수가 결의서 분리 제출 권장 기준을 넘었는지 확인합니다.
+ * @param {number} receiptCount
+ * @returns {boolean}
+ */
+function shouldRecommendExpenseReportSplit(receiptCount) {
+  return receiptCount > RECEIPT_UPLOAD_RECOMMENDED_SPLIT_COUNT;
+}
+
+/**
+ * 선택된 영수증 파일들을 업로드하고, 실패한 파일이 있으면 성공분을 정리한 뒤 오류를 반환합니다.
+ * @param {File[]} files
+ * @param {string} uploadTargetId
+ * @returns {Promise<Array<{ url: string, fileName: string }>>}
+ */
+async function uploadSelectedReceipts(files, uploadTargetId) {
+  if (files.length === 0) {
+    return [];
+  }
+
+  const uploadResults = await Promise.allSettled(
+    files.map((file) => uploadReceipt(file, uploadTargetId)),
+  );
+
+  const uploadedReceipts = [];
+  const failedUploads = [];
+
+  uploadResults.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      uploadedReceipts.push(result.value);
+      return;
+    }
+
+    failedUploads.push({
+      fileName: files[index].name,
+      reason: result.reason?.message || '알 수 없는 오류가 발생했습니다.',
+    });
+  });
+
+  if (failedUploads.length > 0) {
+    await Promise.all(uploadedReceipts.map((receipt) => deleteReceipt(receipt.url)));
+    throw new Error(buildReceiptUploadFailureMessage(failedUploads));
+  }
+
+  return uploadedReceipts;
+}
+
 /* ========================================= */
 const ExpenseReportCreate = () => {
   const navigate = useNavigate();
@@ -384,10 +515,32 @@ const ExpenseReportCreate = () => {
       return;
     }
 
-    setReceiptFiles((prevFiles) => [...prevFiles, ...files]);
+    const currentReceiptCount = existingReceipts.length + receiptFiles.length;
+    const {
+      acceptedFiles,
+      rejectedFiles,
+      limitErrorMessage,
+    } = validateReceiptSelection(files, currentReceiptCount);
+
+    if (limitErrorMessage) {
+      alert(limitErrorMessage);
+      event.target.value = '';
+      return;
+    }
+
+    if (rejectedFiles.length > 0) {
+      alert(buildRejectedReceiptSelectionMessage(rejectedFiles));
+    }
+
+    if (acceptedFiles.length === 0) {
+      event.target.value = '';
+      return;
+    }
+
+    setReceiptFiles((prevFiles) => [...prevFiles, ...acceptedFiles]);
     setReceiptPreviews((prevPreviews) => [
       ...prevPreviews,
-      ...files.map((file) => ({
+      ...acceptedFiles.map((file) => ({
         file,
         preview: URL.createObjectURL(file),
       })),
@@ -432,6 +585,7 @@ const ExpenseReportCreate = () => {
       onRemove: () => removeNewReceipt(index),
     })),
   ];
+  const shouldShowReceiptSplitGuide = shouldRecommendExpenseReportSplit(allReceipts.length);
 
   /**
    * 현재 폼 내용을 임시저장하거나 제출합니다.
@@ -453,9 +607,7 @@ const ExpenseReportCreate = () => {
       let savedReport = null;
       const nextItems = prepareItemsForSave(items, status);
       const uploadTargetId = reportId || crypto.randomUUID();
-      const uploadedReceipts = receiptFiles.length > 0
-        ? await Promise.all(receiptFiles.map((file) => uploadReceipt(file, uploadTargetId)))
-        : [];
+      const uploadedReceipts = await uploadSelectedReceipts(receiptFiles, uploadTargetId);
       const savedReceipts = [
         ...existingReceipts.map((receipt) => ({
           url: receipt.url,
@@ -815,6 +967,14 @@ const ExpenseReportCreate = () => {
             />
           </label>
 
+          <div className="mt-3 rounded-xl bg-cream-100 px-3.5 py-3 text-xs leading-5 text-mist-500">
+            <p>- 지원 형식: JPG, PNG, WEBP, GIF</p>
+            <p>- 영수증당 최대 용량: {RECEIPT_UPLOAD_MAX_FILE_SIZE_MB}MB</p>
+            <p>- 최대 첨부 개수: {RECEIPT_UPLOAD_MAX_COUNT}개</p>
+            <p>{RECEIPT_UPLOAD_MAX_COUNT}개를 초과하면 업로드가 불가합니다.</p>
+            <p>영수증 개수가 많은 경우, 적절히 지출결의서를 분리해서 제출해주세요.</p>
+          </div>
+
           {allReceipts.length > 0 && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-3">
@@ -838,6 +998,11 @@ const ExpenseReportCreate = () => {
                 <ImageIcon className="w-3.5 h-3.5" />
                 총 {allReceipts.length}개의 영수증이 첨부되었습니다.
               </p>
+              {shouldShowReceiptSplitGuide && (
+                <div className="mt-2 rounded-xl border border-gold-200 bg-gold-50 px-3.5 py-3 text-xs leading-5 text-gold-700">
+                  영수증이 {RECEIPT_UPLOAD_RECOMMENDED_SPLIT_COUNT}개를 초과했습니다. 지출결의서를 분리해서 제출하면 검토와 보관이 더 수월합니다.
+                </div>
+              )}
             </>
           )}
         </div>
