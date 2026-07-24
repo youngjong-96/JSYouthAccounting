@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   canUseBoard,
@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
    * @param {string | null | undefined} accessToken
    * @returns {Promise<void>}
    */
-  const loadProfile = async (supabaseUser, accessToken) => {
+  const loadProfile = useCallback(async (supabaseUser, accessToken) => {
     if (!supabaseUser) {
       setUser(null);
       setToken(null);
@@ -60,7 +60,25 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  /**
+   * 현재 세션 기준으로 프로필을 다시 불러와 전역 사용자 상태를 최신으로 맞춥니다.
+   * @returns {Promise<void>}
+   */
+  const refreshProfile = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      setUser(null);
+      setToken(null);
+      return;
+    }
+
+    await loadProfile(session.user, session.access_token);
+  }, [loadProfile]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -82,7 +100,7 @@ export const AuthProvider = ({ children }) => {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadProfile]);
 
   /**
    * 현재 로그인 세션을 종료합니다.
@@ -103,6 +121,7 @@ export const AuthProvider = ({ children }) => {
         token,
         loading,
         logout,
+        refreshProfile,
         isAuthenticated: !!user,
         role,
         canViewSummary: canViewSummary(role),
