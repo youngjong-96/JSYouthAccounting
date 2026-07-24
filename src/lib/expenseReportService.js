@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { deleteReceipt } from './uploadReceipt';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+const DEFAULT_COPY_SOURCE_LIMIT = 15;
 
 /**
  * 현재 로그인한 사용자를 조회합니다.
@@ -140,6 +141,29 @@ function buildExpenseReportDetailUrl(reportId) {
 }
 
 /**
+ * 지출결의서 복사 소스 목록 조회용 API URL을 조합합니다.
+ * @param {{ limit?: number }} options
+ * @returns {string}
+ */
+function buildExpenseReportCopySourcesUrl(options = {}) {
+  const { limit = DEFAULT_COPY_SOURCE_LIMIT } = options;
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  return `${API_URL}/api/expense/copy_sources?${params.toString()}`;
+}
+
+/**
+ * 지출결의서 복사 소스 상세 조회용 API URL을 조합합니다.
+ * @param {string} reportId
+ * @returns {string}
+ */
+function buildExpenseReportCopySourceDetailUrl(reportId) {
+  const params = new URLSearchParams();
+  params.set('id', reportId);
+  return `${API_URL}/api/expense/copy_source_detail?${params.toString()}`;
+}
+
+/**
  * 지출결의서 읽기 API 공통 요청을 보내고 응답 JSON을 반환합니다.
  * @param {string} url
  * @param {string | null | undefined} token
@@ -196,6 +220,157 @@ async function requestExpenseReportsList(options = {}) {
 async function requestExpenseReportDetail(reportId, options = {}) {
   const { token = null } = options;
   return requestExpenseReadJson(buildExpenseReportDetailUrl(reportId), token);
+}
+
+/**
+ * 내 기존 결의서 복사 소스 목록 조회 API를 호출합니다.
+ * @param {{ token?: string | null, limit?: number }} options
+ * @returns {Promise<{ items: Array<object>, total_count: number, limit: number }>}
+ */
+async function requestExpenseReportCopySources(options = {}) {
+  const { token = null } = options;
+  return requestExpenseReadJson(buildExpenseReportCopySourcesUrl(options), token);
+}
+
+/**
+ * 내 기존 결의서 복사 소스 상세 조회 API를 호출합니다.
+ * @param {string} reportId
+ * @param {{ token?: string | null }} options
+ * @returns {Promise<object>}
+ */
+async function requestExpenseReportCopySourceDetail(reportId, options = {}) {
+  const { token = null } = options;
+  return requestExpenseReadJson(buildExpenseReportCopySourceDetailUrl(reportId), token);
+}
+
+/**
+ * 복사 소스 목록 표시용 첫 항목 요약과 항목 개수 맵을 생성합니다.
+ * @param {string[]} reportIds
+ * @returns {Promise<Map<string, { item_count: number, first_item_summary: string }>>}
+ */
+async function buildExpenseCopySourceSummaryMap(reportIds = []) {
+  const summaryMap = new Map();
+
+  if (reportIds.length === 0) {
+    return summaryMap;
+  }
+
+  const { data: items, error } = await supabase
+    .from('expense_items')
+    .select('report_id, account_category, description, sort_order')
+    .in('report_id', reportIds)
+    .order('sort_order');
+
+  if (error) {
+    throw new Error(`기존 결의서 항목 요약 조회 실패: ${error.message}`);
+  }
+
+  reportIds.forEach((reportId) => {
+    summaryMap.set(reportId, {
+      item_count: 0,
+      first_item_summary: '-',
+    });
+  });
+
+  (items || []).forEach((item) => {
+    const reportId = item.report_id;
+    const currentSummary = summaryMap.get(reportId);
+
+    if (!currentSummary) {
+      return;
+    }
+
+    currentSummary.item_count += 1;
+
+    if (currentSummary.item_count === 1) {
+      const accountCategory = item.account_category || '';
+      const description = item.description || '';
+      currentSummary.first_item_summary = `${accountCategory} · ${description}`.trim().replace(/^·\s*/, '') || '-';
+    }
+  });
+
+  return summaryMap;
+}
+
+/**
+ * 현재 로그인 사용자의 기존 결의서 목록을 프론트에서 직접 조회합니다.
+ * 배포 API가 아직 없을 때도 로컬과 배포 환경에서 안전하게 동작하도록 사용합니다.
+ * @param {number} limit
+ * @returns {Promise<{ items: Array<object>, total_count: number, limit: number }>}
+ */
+async function getExpenseReportCopySourcesFromSupabase(limit = DEFAULT_COPY_SOURCE_LIMIT) {
+  const user = await getCurrentUser();
+  const { data: reports, error } = await supabase
+    .from('expense_reports')
+    .select('id, resolution_date, claim_date, total_amount, status, created_at')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`기존 결의서 목록 조회 실패: ${error.message}`);
+  }
+
+  const reportList = reports || [];
+  const reportIds = reportList.map((report) => report.id);
+  const summaryMap = await buildExpenseCopySourceSummaryMap(reportIds);
+
+  return {
+    items: reportList.map((report) => {
+      const summary = summaryMap.get(report.id) || {
+        item_count: 0,
+        first_item_summary: '-',
+      };
+
+      return {
+        id: report.id,
+        resolution_date: report.resolution_date,
+        claim_date: report.claim_date,
+        total_amount: report.total_amount || 0,
+        status: report.status,
+        item_count: summary.item_count,
+        first_item_summary: summary.first_item_summary,
+        created_at: report.created_at,
+      };
+    }),
+    total_count: reportList.length,
+    limit,
+  };
+}
+
+/**
+ * 현재 로그인 사용자가 선택한 기존 결의서 상세를 프론트에서 직접 조회합니다.
+ * 복사 기능은 본인 작성 문서만 허용하므로 user_id 조건을 함께 사용합니다.
+ * @param {string} reportId
+ * @returns {Promise<object>}
+ */
+async function getExpenseReportCopySourceFromSupabase(reportId) {
+  const user = await getCurrentUser();
+  const { data: report, error: reportError } = await supabase
+    .from('expense_reports')
+    .select('id, user_id, resolution_date, claim_date, bank_account, total_amount, status')
+    .eq('id', reportId)
+    .eq('user_id', user.id)
+    .single();
+
+  if (reportError) {
+    throw new Error(`기존 결의서 조회 실패: ${reportError.message}`);
+  }
+
+  const { data: expenseItems, error: itemsError } = await supabase
+    .from('expense_items')
+    .select('*')
+    .eq('report_id', reportId)
+    .order('sort_order');
+
+  if (itemsError) {
+    throw new Error(`기존 결의서 항목 조회 실패: ${itemsError.message}`);
+  }
+
+  return {
+    ...report,
+    expense_items: expenseItems || [],
+  };
 }
 
 /**
@@ -426,6 +601,38 @@ export async function getExpenseReports(options = {}) {
  */
 export async function getExpenseReport(id, options = {}) {
   return requestExpenseReportDetail(id, options);
+}
+
+/**
+ * 현재 로그인 사용자가 복사에 사용할 수 있는 기존 결의서 목록을 조회합니다.
+ * @param {{ token?: string | null, limit?: number }} options
+ * @returns {Promise<{ items: Array<object>, total_count: number, limit: number }>}
+ */
+export async function getExpenseReportCopySources(options = {}) {
+  const { token = null, limit = DEFAULT_COPY_SOURCE_LIMIT } = options;
+
+  try {
+    return await requestExpenseReportCopySources({
+      token,
+      limit,
+    });
+  } catch {
+    return getExpenseReportCopySourcesFromSupabase(limit);
+  }
+}
+
+/**
+ * 현재 로그인 사용자가 복사 소스로 선택한 기존 결의서 상세를 조회합니다.
+ * @param {string} id
+ * @param {{ token?: string | null }} options
+ * @returns {Promise<object>}
+ */
+export async function getExpenseReportCopySource(id, options = {}) {
+  try {
+    return await requestExpenseReportCopySourceDetail(id, options);
+  } catch {
+    return getExpenseReportCopySourceFromSupabase(id);
+  }
 }
 
 /**

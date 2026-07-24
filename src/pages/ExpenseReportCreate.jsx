@@ -4,9 +4,11 @@ import {
   BookOpen,
   CheckCircle,
   ChevronLeft,
+  Copy,
   ImageIcon,
   Loader2,
   Plus,
+  RefreshCw,
   Save,
   Send,
   Trash2,
@@ -15,6 +17,8 @@ import {
 } from 'lucide-react';
 import {
   createExpenseReport,
+  getExpenseReportCopySource,
+  getExpenseReportCopySources,
   getExpenseReport,
   updateExpenseReport,
 } from '../lib/expenseReportService';
@@ -71,6 +75,26 @@ const ACCOUNT_CATEGORIES = [
   '홍보비',
   '활동비'
 ];
+
+/* 기존 결의서 복사 소스 상태 표시용 문구와 색상입니다. */
+const COPY_SOURCE_STATUS_META = {
+  draft: {
+    label: '임시 저장',
+    cls: 'border-gold-200 bg-gold-50 text-gold-700',
+  },
+  submitted: {
+    label: '제출 완료',
+    cls: 'border-green-200 bg-green-50 text-green-700',
+  },
+  approved: {
+    label: '확인 완료',
+    cls: 'border-navy-200 bg-navy-50 text-navy-600',
+  },
+  unknown: {
+    label: '상태 확인 필요',
+    cls: 'border-red-200 bg-red-50 text-red-600',
+  },
+};
 
 /**
  * 숫자를 한글 금액 문자열로 변환합니다.
@@ -175,6 +199,15 @@ function normalizeItem(item = {}) {
 }
 
 /**
+ * 결의서 항목 배열을 정렬 순서 기준으로 안정적으로 정렬합니다.
+ * @param {Array<object> | null | undefined} items
+ * @returns {Array<object>}
+ */
+function sortExpenseItems(items = []) {
+  return [...items].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+}
+
+/**
  * 결의서 상태값을 비교용 문자열로 정규화합니다.
  * @param {string | null | undefined} status
  * @returns {string}
@@ -193,6 +226,15 @@ function isDraftReportStatus(status) {
 }
 
 /**
+ * 기존 결의서 복사 소스 상태 배지에 사용할 문구와 스타일을 반환합니다.
+ * @param {string | null | undefined} status
+ * @returns {{ label: string, cls: string }}
+ */
+function getCopySourceStatusMeta(status) {
+  return COPY_SOURCE_STATUS_META[normalizeReportStatus(status)] || COPY_SOURCE_STATUS_META.unknown;
+}
+
+/**
  * 항목에 임시저장할 만한 입력값이 있는지 확인합니다.
  * @param {object} item
  * @returns {boolean}
@@ -206,6 +248,45 @@ function hasItemContent(item) {
     || Number(item.unit_price) > 0
     || Number(item.amount) > 0,
   );
+}
+
+/**
+ * 현재 작성 폼에 덮어쓰기를 확인해야 할 입력값이 있는지 확인합니다.
+ * @param {{
+ *   items: Array<object>,
+ *   bankAccount: string,
+ *   existingReceipts: Array<object>,
+ *   receiptFiles: Array<File>
+ * }} payload
+ * @returns {boolean}
+ */
+function hasCopyReplaceableContent({
+  items,
+  bankAccount,
+  existingReceipts,
+  receiptFiles,
+}) {
+  return Boolean(
+    bankAccount.trim()
+    || items.some(hasItemContent)
+    || existingReceipts.length > 0
+    || receiptFiles.length > 0,
+  );
+}
+
+/**
+ * 기존 결의서 항목 불러오기 완료 후 사용자에게 보여줄 안내 문구를 만듭니다.
+ * @param {object} sourceReport
+ * @returns {string}
+ */
+function buildCopySourceNoticeMessage(sourceReport) {
+  const sourceDateLabel = formatDateKorean(sourceReport?.resolution_date || '');
+
+  if (!sourceDateLabel) {
+    return '기존 결의서 항목을 불러왔습니다. 날짜는 오늘로 초기화되었고 영수증은 복사되지 않았습니다.';
+  }
+
+  return `${sourceDateLabel} 결의서 항목을 불러왔습니다. 날짜는 오늘로 초기화되었고 영수증은 복사되지 않았습니다.`;
 }
 
 /**
@@ -419,6 +500,14 @@ const ExpenseReportCreate = () => {
   const [loadingDraft, setLoadingDraft] = useState(isEditMode);
   const [successMsg, setSuccessMsg] = useState('');
   const [showGuide, setShowGuide] = useState(false);
+  const [showCopySourceModal, setShowCopySourceModal] = useState(false);
+  const [copySources, setCopySources] = useState([]);
+  const [copySourceLoaded, setCopySourceLoaded] = useState(false);
+  const [copySourceLoading, setCopySourceLoading] = useState(false);
+  const [copySourceError, setCopySourceError] = useState('');
+  const [selectedCopySourceId, setSelectedCopySourceId] = useState('');
+  const [copyApplying, setCopyApplying] = useState(false);
+  const [copyNoticeMsg, setCopyNoticeMsg] = useState('');
 
   /* 입력 항목을 수정하고 금액을 즉시 재계산합니다. */
   const updateItem = useCallback((index, field, value) => {
@@ -443,6 +532,126 @@ const ExpenseReportCreate = () => {
   }, []);
 
   /**
+   * 새로 첨부한 영수증 미리보기 URL을 정리하고 파일 선택 상태를 초기화합니다.
+   * @returns {void}
+   */
+  const clearNewReceiptSelections = useCallback(() => {
+    receiptPreviews.forEach((preview) => {
+      if (preview?.preview) {
+        URL.revokeObjectURL(preview.preview);
+      }
+    });
+
+    setReceiptFiles([]);
+    setReceiptPreviews([]);
+  }, [receiptPreviews]);
+
+  /**
+   * 현재 로그인 사용자가 복사에 사용할 수 있는 기존 결의서 목록을 불러옵니다.
+   * @param {{ force?: boolean }} options
+   * @returns {Promise<void>}
+   */
+  const loadCopySources = useCallback(async ({ force = false } = {}) => {
+    if (!user?.id) {
+      return;
+    }
+
+    if (copySourceLoading || (copySourceLoaded && !force)) {
+      return;
+    }
+
+    setCopySourceLoading(true);
+    setCopySourceError('');
+
+    try {
+      const response = await getExpenseReportCopySources({ token });
+      const nextSources = response?.items || [];
+
+      setCopySources(nextSources);
+      setSelectedCopySourceId((prevSelectedId) => {
+        if (nextSources.some((source) => source.id === prevSelectedId)) {
+          return prevSelectedId;
+        }
+
+        return nextSources[0]?.id || '';
+      });
+      setCopySourceLoaded(true);
+    } catch (loadError) {
+      setCopySourceError(loadError.message || '기존 결의서 목록을 불러오지 못했습니다.');
+    } finally {
+      setCopySourceLoading(false);
+    }
+  }, [copySourceLoaded, copySourceLoading, token, user?.id]);
+
+  /**
+   * 기존 결의서 항목 불러오기 모달을 엽니다.
+   * @returns {void}
+   */
+  const openCopySourceModal = () => {
+    setShowCopySourceModal(true);
+
+    if (!copySourceLoaded && !copySourceLoading) {
+      loadCopySources();
+    }
+  };
+
+  /**
+   * 기존 결의서 항목 불러오기 모달을 닫습니다.
+   * @returns {void}
+   */
+  const closeCopySourceModal = () => {
+    if (copyApplying) {
+      return;
+    }
+
+    setShowCopySourceModal(false);
+  };
+
+  /**
+   * 선택한 기존 결의서 상세를 읽어와 현재 작성 폼에 복사 적용합니다.
+   * 날짜는 오늘로 초기화하고 영수증은 복사하지 않습니다.
+   * @returns {Promise<void>}
+   */
+  const applyCopySource = async () => {
+    if (!selectedCopySourceId) {
+      alert('불러올 기존 결의서를 선택해주세요.');
+      return;
+    }
+
+    if (
+      hasCopyReplaceableContent({
+        items,
+        bankAccount,
+        existingReceipts,
+        receiptFiles,
+      })
+      && !window.confirm('현재 작성 중인 내용이 선택한 기존 결의서 내용으로 바뀝니다. 불러오시겠습니까?')
+    ) {
+      return;
+    }
+
+    setCopyApplying(true);
+
+    try {
+      const sourceReport = await getExpenseReportCopySource(selectedCopySourceId, { token });
+      const sortedItems = sortExpenseItems(sourceReport?.expense_items || []);
+
+      clearNewReceiptSelections();
+      setExistingReceipts([]);
+      setResolutionDate(todayStr());
+      setClaimDate(todayStr());
+      setBankAccount(sourceReport?.bank_account || '');
+      setItems(sortedItems.length > 0 ? sortedItems.map(normalizeItem) : [emptyItem()]);
+      setCopyNoticeMsg(buildCopySourceNoticeMessage(sourceReport));
+      setShowCopySourceModal(false);
+    } catch (loadError) {
+      alert(`기존 결의서 항목을 불러오지 못했습니다: ${loadError.message}`);
+    } finally {
+      setCopyApplying(false);
+    }
+  };
+
+  /**
    * 임시저장된 결의서를 불러와 폼에 채웁니다.
    * @returns {Promise<void>}
    */
@@ -461,9 +670,7 @@ const ExpenseReportCreate = () => {
         throw new Error('작성 중인 임시저장 문서만 수정할 수 있습니다.');
       }
 
-      const sortedItems = [...(report.expense_items || [])].sort(
-        (a, b) => (a.sort_order || 0) - (b.sort_order || 0),
-      );
+      const sortedItems = sortExpenseItems(report.expense_items || []);
 
       setResolutionDate(report.resolution_date || todayStr());
       setBankAccount(report.bank_account || '');
@@ -566,6 +773,7 @@ const ExpenseReportCreate = () => {
     setExistingReceipts((prevReceipts) => prevReceipts.filter((receipt) => receipt.id !== receiptId));
   };
 
+  const selectedCopySource = copySources.find((source) => source.id === selectedCopySourceId) || null;
   const totalAmount = items.reduce(
     (sum, item) => sum + (Number(item.amount) || 0),
     0,
@@ -693,14 +901,33 @@ const ExpenseReportCreate = () => {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => setShowGuide(true)}
-          className="w-full flex items-center justify-center gap-2 py-3 bg-white border-2 border-dashed border-gold-300 hover:border-gold-400 hover:bg-gold-50 text-gold-600 hover:text-gold-700 font-semibold rounded-2xl transition-all text-sm"
-        >
-          <BookOpen className="w-4 h-4" />
-          지출결의서 작성 가이드 보기
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowGuide(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-white border-2 border-dashed border-gold-300 hover:border-gold-400 hover:bg-gold-50 text-gold-600 hover:text-gold-700 font-semibold rounded-2xl transition-all text-sm"
+          >
+            <BookOpen className="w-4 h-4" />
+            지출결의서 작성 가이드 보기
+          </button>
+
+          {!isEditMode && (
+            <button
+              type="button"
+              onClick={openCopySourceModal}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-mist-200 hover:border-navy-300 hover:bg-navy-50 text-navy-500 hover:text-navy-600 font-semibold rounded-2xl transition-all text-sm"
+            >
+              <Copy className="w-4 h-4" />
+              기존 지출결의서에서 항목 불러오기
+            </button>
+          )}
+        </div>
+
+        {copyNoticeMsg && !isEditMode && (
+          <div className="rounded-2xl border border-navy-100 bg-navy-50 px-4 py-3 text-sm leading-6 text-navy-600">
+            {copyNoticeMsg}
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl border border-mist-200 p-4">
           <label className={labelCls}>결의일자</label>
@@ -1028,6 +1255,153 @@ const ExpenseReportCreate = () => {
           </button>
         </div>
       </div>
+
+      {showCopySourceModal && !isEditMode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={closeCopySourceModal}
+        >
+          <div className="fixed inset-0 bg-navy-900/70 backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl overflow-hidden max-w-2xl w-full max-h-[90vh] flex flex-col animate-slideUp"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-mist-200 flex-shrink-0">
+              <div>
+                <h3 className="text-sm font-bold text-navy-500">기존 지출결의서에서 항목 불러오기</h3>
+                <p className="mt-1 text-xs leading-5 text-mist-500">
+                  내가 작성했던 결의서의 항목과 계좌정보를 새 결의서에 복사할 수 있습니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCopySourceModal}
+                disabled={copyApplying}
+                className="p-1.5 text-mist-400 hover:text-navy-500 hover:bg-cream-100 rounded-lg transition-colors disabled:opacity-40"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+              <div className="rounded-2xl bg-cream-100 px-4 py-3 text-xs leading-5 text-mist-500">
+                <p>- 내가 작성한 기존 결의서만 불러올 수 있습니다.</p>
+                <p>- 날짜는 오늘로 초기화되며 영수증은 복사되지 않습니다.</p>
+                <p>- 항목, 적요, 월분, 수량, 단가, 금액, 계좌정보만 복사됩니다.</p>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-mist-400">
+                  {copySourceLoaded
+                    ? `최근 결의서 ${copySources.length}건을 확인할 수 있습니다.`
+                    : '기존 결의서 목록을 준비하고 있습니다.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => loadCopySources({ force: true })}
+                  disabled={copySourceLoading || copyApplying}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-mist-200 px-3 py-1.5 text-xs font-medium text-navy-500 transition-colors hover:border-navy-300 hover:bg-navy-50 disabled:opacity-40"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${copySourceLoading ? 'animate-spin' : ''}`} />
+                  다시 불러오기
+                </button>
+              </div>
+
+              {copySourceLoading ? (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-mist-200 bg-mist-50 px-4 py-14 text-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-navy-400" />
+                  <p className="mt-3 text-sm font-medium text-navy-500">기존 결의서 목록을 불러오는 중입니다.</p>
+                  <p className="mt-1 text-xs text-mist-400">잠시만 기다려주세요.</p>
+                </div>
+              ) : copySourceError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-600">
+                  <p>{copySourceError}</p>
+                </div>
+              ) : copySources.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-mist-200 bg-mist-50 px-4 py-14 text-center">
+                  <p className="text-sm font-medium text-navy-500">불러올 수 있는 기존 결의서가 없습니다.</p>
+                  <p className="mt-1 text-xs text-mist-400">먼저 지출결의서를 한 번 이상 작성해 주세요.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {copySources.map((source) => {
+                    const statusMeta = getCopySourceStatusMeta(source.status);
+
+                    return (
+                      <button
+                        key={source.id}
+                        type="button"
+                        onClick={() => setSelectedCopySourceId(source.id)}
+                        className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+                          selectedCopySourceId === source.id
+                            ? 'border-navy-400 bg-navy-50 shadow-sm'
+                            : 'border-mist-200 bg-white hover:border-navy-200 hover:bg-cream-100'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold text-navy-500">
+                                {formatDateKorean(source.resolution_date) || '결의일자 없음'}
+                              </span>
+                              <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusMeta.cls}`}>
+                                {statusMeta.label}
+                              </span>
+                            </div>
+                            <p className="mt-2 truncate text-sm text-mist-500">
+                              {source.first_item_summary || '항목 요약이 없습니다.'}
+                            </p>
+                            <p className="mt-1 text-xs text-mist-400">
+                              항목 {source.item_count || 0}개
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-navy-500 tabular-nums">
+                              {(source.total_amount || 0).toLocaleString()}원
+                            </p>
+                            <p className="mt-1 text-xs text-mist-400">
+                              청구일자 {formatDateKorean(source.claim_date) || '-'}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-mist-200 px-5 py-4 flex-shrink-0">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-5 text-mist-400">
+                  {selectedCopySource
+                    ? `선택한 결의서: ${formatDateKorean(selectedCopySource.resolution_date) || '결의일자 없음'} / ${selectedCopySource.first_item_summary || '항목 요약 없음'}`
+                    : '불러올 기존 결의서를 선택해주세요.'}
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                  <button
+                    type="button"
+                    onClick={closeCopySourceModal}
+                    disabled={copyApplying}
+                    className="rounded-xl bg-cream-100 px-4 py-2.5 text-sm font-medium text-navy-500 transition-colors hover:bg-mist-200 disabled:opacity-40"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyCopySource}
+                    disabled={!selectedCopySourceId || copySourceLoading || copyApplying}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-navy-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-navy-600 disabled:opacity-40"
+                  >
+                    {copyApplying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+                    항목 불러오기
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showGuide && (
         <div
