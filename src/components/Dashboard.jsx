@@ -4,6 +4,12 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Filter, Loader2, LogOut, Menu, Search, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useAuth } from '../context/AuthContext';
+import {
+  completeRequestPerformanceMeasurement,
+  getServerTimingHeader,
+  startRequestPerformanceMeasurement,
+  waitForNextPaint,
+} from '../lib/requestPerformance';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 const LOGIN_NOTICE_SESSION_KEY = 'post-login-support-notice-dismissed';
@@ -79,6 +85,13 @@ const Dashboard = () => {
    * @returns {Promise<void>}
    */
   const fetchSummary = async () => {
+    const measurement = startRequestPerformanceMeasurement({
+      metric: 'finance_summary_display',
+      meta: {
+        hasMonth: Boolean(month),
+        hasWeek: Boolean(week),
+      },
+    });
     setLoading(true);
 
     try {
@@ -91,7 +104,23 @@ const Dashboard = () => {
 
       const response = await axios.get(`${API_BASE_URL}/api/finance/summary`, { params, headers });
       setData(response.data);
+      if (measurement) {
+        await waitForNextPaint();
+      }
+      completeRequestPerformanceMeasurement(measurement, {
+        meta: {
+          status: response.status,
+          recordCount: response.data?.raw_records?.length || 0,
+          personnelRecordCount: response.data?.raw_personnel_records?.length || 0,
+        },
+        serverTiming: getServerTimingHeader(response.headers),
+      });
     } catch (error) {
+      completeRequestPerformanceMeasurement(measurement, {
+        outcome: 'failed',
+        meta: { status: error.response?.status || null },
+        serverTiming: getServerTimingHeader(error.response?.headers),
+      });
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);

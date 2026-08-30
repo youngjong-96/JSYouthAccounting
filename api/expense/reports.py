@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from supabase import create_client
+from api._performance import RequestTimer, measure_request
 
 
 ALL_REPORT_ROLES = {"master", "accounting"}
@@ -45,24 +46,25 @@ def can_view_own_reports(role):
     return role in OWN_REPORT_ROLES
 
 
-def get_request_user(auth_header):
+def get_request_user(auth_header, timer=None):
     """요청 토큰을 검증하고 지출결의서 조회 권한이 있는 사용자 정보를 반환합니다."""
-    token = extract_bearer_token(auth_header)
-    if not token:
-        return None
+    with measure_request(timer, "auth"):
+        token = extract_bearer_token(auth_header)
+        if not token:
+            return None
 
-    sb = get_supabase()
+        sb = get_supabase()
 
-    try:
-        user = sb.auth.get_user(token)
-        user_id = user.user.id
-        result = sb.table("profiles").select("role").eq("id", user_id).single().execute()
-        role = result.data.get("role") if result.data else None
+        try:
+            user = sb.auth.get_user(token)
+            user_id = user.user.id
+            result = sb.table("profiles").select("role").eq("id", user_id).single().execute()
+            role = result.data.get("role") if result.data else None
 
-        if can_view_all_reports(role) or can_view_own_reports(role):
-            return {"id": user_id, "role": role}
-    except Exception:
-        return None
+            if can_view_all_reports(role) or can_view_own_reports(role):
+                return {"id": user_id, "role": role}
+        except Exception:
+            return None
 
     return None
 
@@ -119,37 +121,40 @@ def apply_list_filters(query, filters):
     return query
 
 
-def fetch_query_count(query):
+def fetch_query_count(query, timer=None, metric_name="count"):
     """카운트 전용 쿼리를 실행해 전체 건수를 반환합니다."""
-    result = query.limit(1).execute()
+    with measure_request(timer, metric_name):
+        result = query.limit(1).execute()
     return result.count or 0
 
 
-def build_author_name_map(sb, reports):
+def build_author_name_map(sb, reports, timer=None):
     """조회한 결의서 목록에 대응하는 작성자 이름 맵을 생성합니다."""
     user_ids = list({report.get("user_id") for report in reports if report.get("user_id")})
     if not user_ids:
         return {}
 
-    result = sb.table("profiles").select("id, name").in_("id", user_ids).execute()
+    with measure_request(timer, "author_lookup"):
+        result = sb.table("profiles").select("id, name").in_("id", user_ids).execute()
     return {
         profile.get("id"): profile.get("name") or ""
         for profile in (result.data or [])
     }
 
 
-def build_expense_item_summary_map(sb, report_ids):
+def build_expense_item_summary_map(sb, report_ids, timer=None):
     """목록 화면에 필요한 항목 개수와 첫 항목 요약을 보고서별로 계산합니다."""
     if not report_ids:
         return {}
 
-    result = (
-        sb.table("expense_items")
-        .select("report_id, account_category, description, sort_order")
-        .in_("report_id", report_ids)
-        .order("sort_order")
-        .execute()
-    )
+    with measure_request(timer, "item_summary_lookup"):
+        result = (
+            sb.table("expense_items")
+            .select("report_id, account_category, description, sort_order")
+            .in_("report_id", report_ids)
+            .order("sort_order")
+            .execute()
+        )
 
     summary_map = {report_id: {"item_count": 0, "first_item_summary": "-"} for report_id in report_ids}
 
@@ -168,11 +173,11 @@ def build_expense_item_summary_map(sb, report_ids):
     return summary_map
 
 
-def build_report_list_items(sb, reports):
+def build_report_list_items(sb, reports, timer=None):
     """원본 결의서 데이터를 목록 전용 경량 응답 구조로 변환합니다."""
-    author_name_map = build_author_name_map(sb, reports)
+    author_name_map = build_author_name_map(sb, reports, timer)
     report_ids = [report.get("id") for report in reports if report.get("id")]
-    item_summary_map = build_expense_item_summary_map(sb, report_ids)
+    item_summary_map = build_expense_item_summary_map(sb, report_ids, timer)
 
     return [
         {
@@ -195,7 +200,7 @@ def build_report_list_items(sb, reports):
     ]
 
 
-def fetch_report_list(sb, requester, params):
+def fetch_report_list(sb, requester, params, timer=None):
     """목록 페이지에 필요한 경량 데이터와 페이지 정보를 함께 조회합니다."""
     page = parse_positive_int(params.get("page", [DEFAULT_PAGE])[0], DEFAULT_PAGE)
     limit = parse_positive_int(params.get("limit", [DEFAULT_LIMIT])[0], DEFAULT_LIMIT, MAX_LIMIT)
@@ -205,7 +210,7 @@ def fetch_report_list(sb, requester, params):
         sb.table("expense_reports").select("id", count="exact"),
         requester,
     )
-    scope_total_count = fetch_query_count(base_scope_query)
+    scope_total_count = fetch_query_count(base_scope_query, timer, "scope_count")
 
     filtered_count_query = apply_list_filters(
         apply_scope_filter(
@@ -214,7 +219,7 @@ def fetch_report_list(sb, requester, params):
         ),
         filters,
     )
-    total_count = fetch_query_count(filtered_count_query)
+    total_count = fetch_query_count(filtered_count_query, timer, "filtered_count")
     total_pages = max(1, math.ceil(total_count / limit)) if total_count else 1
     current_page = min(page, total_pages)
     start_index = (current_page - 1) * limit
@@ -243,11 +248,12 @@ def fetch_report_list(sb, requester, params):
         filters,
     )
 
-    reports_result = list_query.order("created_at", desc=True).range(start_index, end_index).execute()
+    with measure_request(timer, "list_query"):
+        reports_result = list_query.order("created_at", desc=True).range(start_index, end_index).execute()
     reports = reports_result.data or []
 
     return {
-        "items": build_report_list_items(sb, reports),
+        "items": build_report_list_items(sb, reports, timer),
         "page": current_page,
         "limit": limit,
         "total_count": total_count,
@@ -262,11 +268,12 @@ def fetch_report_list(sb, requester, params):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         """요청자의 역할에 맞는 지출결의서 목록 데이터를 반환합니다."""
+        timer = RequestTimer("expense_reports")
         auth_header = self.headers.get("Authorization", "")
-        requester = get_request_user(auth_header)
+        requester = get_request_user(auth_header, timer)
 
         if not requester:
-            self._send_json({"error": "Permission denied"}, 403)
+            self._send_json({"error": "Permission denied"}, 403, timer)
             return
 
         parsed = urlparse(self.path)
@@ -277,22 +284,29 @@ class handler(BaseHTTPRequestHandler):
                 self._send_json(
                     {"error": "Expense report detail must be requested from /api/expense/report_detail"},
                     400,
+                    timer,
                 )
                 return
 
             sb = get_supabase()
 
-            self._send_json(fetch_report_list(sb, requester, params), 200)
+            self._send_json(fetch_report_list(sb, requester, params, timer), 200, timer)
         except Exception as error:
-            self._send_json({"error": str(error)}, 500)
+            self._send_json({"error": str(error)}, 500, timer)
 
-    def _send_json(self, data, status=200):
+    def _send_json(self, data, status=200, timer=None):
         """JSON 응답과 공통 헤더를 함께 전송합니다."""
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        with measure_request(timer, "serialize"):
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", len(body))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Expose-Headers", "Server-Timing, X-Performance-Request-Id")
+        if timer:
+            self.send_header("Server-Timing", timer.server_timing_header())
+            self.send_header("X-Performance-Request-Id", timer.request_id)
+            timer.log(status=status, response_bytes=len(body))
         self.end_headers()
         self.wfile.write(body)
 
@@ -302,4 +316,5 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Expose-Headers", "Server-Timing, X-Performance-Request-Id")
         self.end_headers()

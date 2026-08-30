@@ -38,7 +38,7 @@ export function isExpenseReportPerformanceEnabled() {
   const queryFlag = queryParams.get('expensePerf');
   const storageFlag = window.localStorage.getItem(EXPENSE_REPORT_PERF_TOGGLE_KEY);
 
-  return queryFlag === '1' || storageFlag === '1';
+  return queryFlag === '1' || queryParams.get('perf') === '1' || storageFlag === '1';
 }
 
 /**

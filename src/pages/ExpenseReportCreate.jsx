@@ -24,6 +24,11 @@ import {
 } from '../lib/expenseReportService';
 import { writeExpenseReportCacheInvalidation } from '../lib/expenseReportCacheInvalidation';
 import {
+  completeRequestPerformanceMeasurement,
+  startRequestPerformanceMeasurement,
+  waitForNextPaint,
+} from '../lib/requestPerformance';
+import {
   deleteReceipt,
   getReceiptUploadMaxCount,
   getReceiptUploadMaxFileSizeMb,
@@ -562,6 +567,10 @@ const ExpenseReportCreate = () => {
 
     setCopySourceLoading(true);
     setCopySourceError('');
+    const measurement = startRequestPerformanceMeasurement({
+      metric: 'expense_copy_sources_display',
+      meta: { force },
+    });
 
     try {
       const response = await getExpenseReportCopySources({ token });
@@ -576,7 +585,16 @@ const ExpenseReportCreate = () => {
         return nextSources[0]?.id || '';
       });
       setCopySourceLoaded(true);
+      if (measurement) {
+        await waitForNextPaint();
+      }
+      completeRequestPerformanceMeasurement(measurement, {
+        meta: { itemCount: nextSources.length },
+      });
     } catch (loadError) {
+      completeRequestPerformanceMeasurement(measurement, {
+        outcome: 'failed',
+      });
       setCopySourceError(loadError.message || '기존 결의서 목록을 불러오지 못했습니다.');
     } finally {
       setCopySourceLoading(false);
@@ -631,6 +649,9 @@ const ExpenseReportCreate = () => {
     }
 
     setCopyApplying(true);
+    const measurement = startRequestPerformanceMeasurement({
+      metric: 'expense_copy_source_apply_display',
+    });
 
     try {
       const sourceReport = await getExpenseReportCopySource(selectedCopySourceId, { token });
@@ -644,7 +665,16 @@ const ExpenseReportCreate = () => {
       setItems(sortedItems.length > 0 ? sortedItems.map(normalizeItem) : [emptyItem()]);
       setCopyNoticeMsg(buildCopySourceNoticeMessage(sourceReport));
       setShowCopySourceModal(false);
+      if (measurement) {
+        await waitForNextPaint();
+      }
+      completeRequestPerformanceMeasurement(measurement, {
+        meta: { itemCount: sortedItems.length },
+      });
     } catch (loadError) {
+      completeRequestPerformanceMeasurement(measurement, {
+        outcome: 'failed',
+      });
       alert(`기존 결의서 항목을 불러오지 못했습니다: ${loadError.message}`);
     } finally {
       setCopyApplying(false);
@@ -662,6 +692,9 @@ const ExpenseReportCreate = () => {
     }
 
     setLoadingDraft(true);
+    const measurement = startRequestPerformanceMeasurement({
+      metric: 'expense_draft_display',
+    });
 
     try {
       const report = await getExpenseReport(reportId, { token });
@@ -683,7 +716,19 @@ const ExpenseReportCreate = () => {
           fileName: receipt.file_name || '영수증',
         })),
       );
+      if (measurement) {
+        await waitForNextPaint();
+      }
+      completeRequestPerformanceMeasurement(measurement, {
+        meta: {
+          itemCount: sortedItems.length,
+          receiptCount: report.expense_receipts?.length || 0,
+        },
+      });
     } catch (loadError) {
+      completeRequestPerformanceMeasurement(measurement, {
+        outcome: 'failed',
+      });
       alert(`결의서를 불러오지 못했습니다: ${loadError.message}`);
       navigate('/expense', { replace: true });
     } finally {
