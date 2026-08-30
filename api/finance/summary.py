@@ -7,6 +7,7 @@ import gspread
 import numpy as np
 import pandas as pd
 from google.oauth2.service_account import Credentials
+from api._performance import RequestTimer, measure_request
 
 
 def get_google_sheet():
@@ -65,6 +66,7 @@ def get_personnel_df(workbook):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        timer = RequestTimer("finance_summary")
         # Parse query params
         from urllib.parse import urlparse, parse_qs
         parsed = urlparse(self.path)
@@ -74,15 +76,19 @@ class handler(BaseHTTPRequestHandler):
         week = params.get("week", [None])[0]
 
         try:
-            workbook = get_google_sheet()
-            df = get_finance_df(workbook)
+            with measure_request(timer, "sheets_connect"):
+                workbook = get_google_sheet()
+            with measure_request(timer, "finance_sheet_read"):
+                df = get_finance_df(workbook)
         except Exception as e:
-            self._send_json({"error": str(e)}, 500)
+            self._send_json({"error": str(e)}, 500, timer)
             return
 
         if df.empty:
-            self._send_json({"message": "No data found."}, 200)
+            self._send_json({"message": "No data found."}, 200, timer)
             return
+
+        aggregation_started_at = timer.start()
 
         # 필터 전 전체 데이터 보존
         df_all = df.copy()
@@ -181,7 +187,8 @@ class handler(BaseHTTPRequestHandler):
         personnel_stats = None
         raw_personnel_records = []
         try:
-            personnel_df = get_personnel_df(workbook)
+            with measure_request(timer, "personnel_sheet_read"):
+                personnel_df = get_personnel_df(workbook)
             if not personnel_df.empty:
                 month_personnel_df = personnel_df.copy()
                 if year:
@@ -230,14 +237,21 @@ class handler(BaseHTTPRequestHandler):
             "raw_records": df.replace({float("nan"): None}).to_dict("records"),
         }
 
-        self._send_json(response_data, 200)
+        timer.stop("aggregate", aggregation_started_at)
+        self._send_json(response_data, 200, timer)
 
-    def _send_json(self, data, status=200):
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    def _send_json(self, data, status=200, timer=None):
+        with measure_request(timer, "serialize"):
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", len(body))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Expose-Headers", "Server-Timing, X-Performance-Request-Id")
+        if timer:
+            self.send_header("Server-Timing", timer.server_timing_header())
+            self.send_header("X-Performance-Request-Id", timer.request_id)
+            timer.log(status=status, response_bytes=len(body))
         self.end_headers()
         self.wfile.write(body)
 
@@ -246,4 +260,5 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Expose-Headers", "Server-Timing, X-Performance-Request-Id")
         self.end_headers()

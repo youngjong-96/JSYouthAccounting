@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from supabase import create_client
+from api._performance import RequestTimer, measure_request
 
 
 ALLOWED_COPY_SOURCE_ROLES = {"master", "accounting", "leader", "leader_juboteam"}
@@ -30,24 +31,25 @@ def can_use_copy_source(role):
     return role in ALLOWED_COPY_SOURCE_ROLES
 
 
-def get_request_user(auth_header):
+def get_request_user(auth_header, timer=None):
     """요청 토큰을 검증하고 복사 기능을 사용할 수 있는 사용자 정보를 반환합니다."""
-    token = extract_bearer_token(auth_header)
-    if not token:
-        return None
+    with measure_request(timer, "auth"):
+        token = extract_bearer_token(auth_header)
+        if not token:
+            return None
 
-    sb = get_supabase()
+        sb = get_supabase()
 
-    try:
-        user = sb.auth.get_user(token)
-        user_id = user.user.id
-        result = sb.table("profiles").select("role").eq("id", user_id).single().execute()
-        role = result.data.get("role") if result.data else None
+        try:
+            user = sb.auth.get_user(token)
+            user_id = user.user.id
+            result = sb.table("profiles").select("role").eq("id", user_id).single().execute()
+            role = result.data.get("role") if result.data else None
 
-        if can_use_copy_source(role):
-            return {"id": user_id, "role": role}
-    except Exception:
-        return None
+            if can_use_copy_source(role):
+                return {"id": user_id, "role": role}
+        except Exception:
+            return None
 
     return None
 
@@ -58,27 +60,28 @@ def get_report_id_from_params(params):
     return report_id.strip() if isinstance(report_id, str) else None
 
 
-def fetch_copy_source_detail(sb, requester, report_id):
+def fetch_copy_source_detail(sb, requester, report_id, timer=None):
     """현재 사용자가 작성한 결의서 중 복사할 원본 상세를 조회합니다."""
-    result = (
-        sb.table("expense_reports")
-        .select(
-            """
-            id,
-            user_id,
-            resolution_date,
-            claim_date,
-            bank_account,
-            total_amount,
-            status,
-            expense_items (*)
-            """
+    with measure_request(timer, "copy_source_detail_query"):
+        result = (
+            sb.table("expense_reports")
+            .select(
+                """
+                id,
+                user_id,
+                resolution_date,
+                claim_date,
+                bank_account,
+                total_amount,
+                status,
+                expense_items (*)
+                """
+            )
+            .eq("id", report_id)
+            .eq("user_id", requester["id"])
+            .single()
+            .execute()
         )
-        .eq("id", report_id)
-        .eq("user_id", requester["id"])
-        .single()
-        .execute()
-    )
 
     return result.data
 
@@ -86,11 +89,12 @@ def fetch_copy_source_detail(sb, requester, report_id):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         """요청 사용자가 작성한 복사 소스 상세 데이터를 반환합니다."""
+        timer = RequestTimer("expense_copy_source_detail")
         auth_header = self.headers.get("Authorization", "")
-        requester = get_request_user(auth_header)
+        requester = get_request_user(auth_header, timer)
 
         if not requester:
-            self._send_json({"error": "Permission denied"}, 403)
+            self._send_json({"error": "Permission denied"}, 403, timer)
             return
 
         parsed = urlparse(self.path)
@@ -98,28 +102,34 @@ class handler(BaseHTTPRequestHandler):
         report_id = get_report_id_from_params(params)
 
         if not report_id:
-            self._send_json({"error": "Expense report id is required"}, 400)
+            self._send_json({"error": "Expense report id is required"}, 400, timer)
             return
 
         try:
             sb = get_supabase()
-            report = fetch_copy_source_detail(sb, requester, report_id)
+            report = fetch_copy_source_detail(sb, requester, report_id, timer)
 
             if not report:
-                self._send_json({"error": "Expense report not found"}, 404)
+                self._send_json({"error": "Expense report not found"}, 404, timer)
                 return
 
-            self._send_json(report, 200)
+            self._send_json(report, 200, timer)
         except Exception as error:
-            self._send_json({"error": str(error)}, 500)
+            self._send_json({"error": str(error)}, 500, timer)
 
-    def _send_json(self, data, status=200):
+    def _send_json(self, data, status=200, timer=None):
         """JSON 응답과 공통 헤더를 함께 전송합니다."""
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        with measure_request(timer, "serialize"):
+            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", len(body))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Expose-Headers", "Server-Timing, X-Performance-Request-Id")
+        if timer:
+            self.send_header("Server-Timing", timer.server_timing_header())
+            self.send_header("X-Performance-Request-Id", timer.request_id)
+            timer.log(status=status, response_bytes=len(body))
         self.end_headers()
         self.wfile.write(body)
 
@@ -129,4 +139,5 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Expose-Headers", "Server-Timing, X-Performance-Request-Id")
         self.end_headers()

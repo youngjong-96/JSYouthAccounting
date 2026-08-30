@@ -1,5 +1,10 @@
 import { supabase } from './supabase';
 import { deleteReceipt } from './uploadReceipt';
+import {
+  completeRequestPerformanceMeasurement,
+  getServerTimingHeader,
+  startRequestPerformanceMeasurement,
+} from './requestPerformance';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 const DEFAULT_COPY_SOURCE_LIMIT = 15;
@@ -169,27 +174,47 @@ function buildExpenseReportCopySourceDetailUrl(reportId) {
  * @param {string | null | undefined} token
  * @returns {Promise<object>}
  */
-async function requestExpenseReadJson(url, token) {
-  const accessToken = await getExpenseReadAccessToken(token);
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
-
-  let result = null;
+async function requestExpenseReadJson(url, token, metric) {
+  const measurement = startRequestPerformanceMeasurement({ metric });
+  let status = null;
+  let serverTiming = null;
 
   try {
-    result = await response.json();
-  } catch {
-    result = null;
-  }
+    const accessToken = await getExpenseReadAccessToken(token);
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error(result?.error || '지출결의서 조회에 실패했습니다.');
-  }
+    status = response.status;
+    serverTiming = getServerTimingHeader(response.headers);
 
-  return result;
+    let result = null;
+
+    try {
+      result = await response.json();
+    } catch {
+      result = null;
+    }
+
+    if (!response.ok) {
+      throw new Error(result?.error || '지출결의서 조회에 실패했습니다.');
+    }
+
+    completeRequestPerformanceMeasurement(measurement, {
+      meta: { status },
+      serverTiming,
+    });
+    return result;
+  } catch (error) {
+    completeRequestPerformanceMeasurement(measurement, {
+      outcome: 'failed',
+      meta: { status },
+      serverTiming,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -208,7 +233,7 @@ async function requestExpenseReadJson(url, token) {
  */
 async function requestExpenseReportsList(options = {}) {
   const { token = null } = options;
-  return requestExpenseReadJson(buildExpenseReportsListUrl(options), token);
+  return requestExpenseReadJson(buildExpenseReportsListUrl(options), token, 'expense_report_list_api');
 }
 
 /**
@@ -219,7 +244,7 @@ async function requestExpenseReportsList(options = {}) {
  */
 async function requestExpenseReportDetail(reportId, options = {}) {
   const { token = null } = options;
-  return requestExpenseReadJson(buildExpenseReportDetailUrl(reportId), token);
+  return requestExpenseReadJson(buildExpenseReportDetailUrl(reportId), token, 'expense_report_detail_api');
 }
 
 /**
@@ -229,7 +254,7 @@ async function requestExpenseReportDetail(reportId, options = {}) {
  */
 async function requestExpenseReportCopySources(options = {}) {
   const { token = null } = options;
-  return requestExpenseReadJson(buildExpenseReportCopySourcesUrl(options), token);
+  return requestExpenseReadJson(buildExpenseReportCopySourcesUrl(options), token, 'expense_copy_sources_api');
 }
 
 /**
@@ -240,7 +265,7 @@ async function requestExpenseReportCopySources(options = {}) {
  */
 async function requestExpenseReportCopySourceDetail(reportId, options = {}) {
   const { token = null } = options;
-  return requestExpenseReadJson(buildExpenseReportCopySourceDetailUrl(reportId), token);
+  return requestExpenseReadJson(buildExpenseReportCopySourceDetailUrl(reportId), token, 'expense_copy_source_detail_api');
 }
 
 /**
@@ -610,14 +635,33 @@ export async function getExpenseReport(id, options = {}) {
  */
 export async function getExpenseReportCopySources(options = {}) {
   const { token = null, limit = DEFAULT_COPY_SOURCE_LIMIT } = options;
+  const measurement = startRequestPerformanceMeasurement({
+    metric: 'expense_copy_sources_load',
+  });
 
   try {
-    return await requestExpenseReportCopySources({
+    const result = await requestExpenseReportCopySources({
       token,
       limit,
     });
+    completeRequestPerformanceMeasurement(measurement, {
+      meta: { source: 'api', itemCount: result?.items?.length || 0 },
+    });
+    return result;
   } catch {
-    return getExpenseReportCopySourcesFromSupabase(limit);
+    try {
+      const result = await getExpenseReportCopySourcesFromSupabase(limit);
+      completeRequestPerformanceMeasurement(measurement, {
+        meta: { source: 'supabase_fallback', itemCount: result?.items?.length || 0 },
+      });
+      return result;
+    } catch (error) {
+      completeRequestPerformanceMeasurement(measurement, {
+        outcome: 'failed',
+        meta: { source: 'supabase_fallback' },
+      });
+      throw error;
+    }
   }
 }
 
@@ -628,10 +672,30 @@ export async function getExpenseReportCopySources(options = {}) {
  * @returns {Promise<object>}
  */
 export async function getExpenseReportCopySource(id, options = {}) {
+  const measurement = startRequestPerformanceMeasurement({
+    metric: 'expense_copy_source_load',
+  });
+
   try {
-    return await requestExpenseReportCopySourceDetail(id, options);
+    const result = await requestExpenseReportCopySourceDetail(id, options);
+    completeRequestPerformanceMeasurement(measurement, {
+      meta: { source: 'api', itemCount: result?.expense_items?.length || 0 },
+    });
+    return result;
   } catch {
-    return getExpenseReportCopySourceFromSupabase(id);
+    try {
+      const result = await getExpenseReportCopySourceFromSupabase(id);
+      completeRequestPerformanceMeasurement(measurement, {
+        meta: { source: 'supabase_fallback', itemCount: result?.expense_items?.length || 0 },
+      });
+      return result;
+    } catch (error) {
+      completeRequestPerformanceMeasurement(measurement, {
+        outcome: 'failed',
+        meta: { source: 'supabase_fallback' },
+      });
+      throw error;
+    }
   }
 }
 
