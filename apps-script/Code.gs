@@ -45,6 +45,8 @@ const MAIL_HEADER = Object.freeze({
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('📧 회계보고')
+    .addItem('인쇄·카톡 자료 만들기', 'showReportPackageDialog')
+    .addSeparator()
     .addItem('메일 제목/본문 작성 안내', 'showMailTemplateGuide')
     .addSeparator()
     .addItem('권한 확인/재승인', 'authorizeReportAutomation')
@@ -53,6 +55,77 @@ function onOpen() {
     .addItem('테스트 발송', 'sendTestReport')
     .addItem('실제 발송', 'sendSelectedReport')
     .addToUi();
+}
+
+/**
+ * 선택된 행의 보고서를 PDF/PNG로 받을 수 있는 다운로드 창을 엽니다.
+ * 실제 보고서 생성은 창이 열린 뒤 비동기로 실행됩니다.
+ */
+function showReportPackageDialog() {
+  requireAllProjectScopes_();
+  const output = HtmlService.createHtmlOutputFromFile('ReportPackage')
+    .setWidth(1080)
+    .setHeight(760);
+  SpreadsheetApp.getUi().showModalDialog(output, '인쇄·카톡 보고서 자료');
+}
+
+/**
+ * ReportPackage.html에서 호출하는 공개 서버 함수입니다.
+ * 선택 행의 기간을 적용하고 PDF를 생성한 뒤 브라우저에서 처리 가능한 base64로 반환합니다.
+ */
+function buildPrintPackageData() {
+  requireAllProjectScopes_();
+  const lock = LockService.getDocumentLock();
+  if (!lock.tryLock(CONFIG.LOCK_TIMEOUT_MS)) {
+    throw new Error('다른 보고서 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요.');
+  }
+
+  let selectorSnapshot = null;
+  let ss = null;
+
+  try {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+    const mailSheet = getRequiredSheet_(ss, CONFIG.MAIL_SHEET_NAME);
+    const mailColumns = getMailColumnMap_(mailSheet);
+    const selectedRow = findSelectedMailRow_(mailSheet, mailColumns);
+    const mailConfig = readMailConfig_(mailSheet, selectedRow, mailColumns);
+    const period = getReportPeriod_(mailConfig.reportDate, mailConfig.reportDateDisplay);
+
+    selectorSnapshot = captureReportSelectors_(ss);
+    applyReportPeriod_(ss, period);
+    SpreadsheetApp.flush();
+    Utilities.sleep(CONFIG.FORMULA_WAIT_MS);
+
+    const artifacts = buildReportArtifacts_(ss, mailConfig.reportType, period);
+    const reports = artifacts.map((artifact) => ({
+      key: artifact.key,
+      title: artifact.title,
+      pdfName: artifact.pdfBlob.getName(),
+      pdfBase64: Utilities.base64Encode(artifact.pdfBlob.getBytes()),
+    }));
+
+    return {
+      period: {
+        dateKey: period.dateKey,
+        dateKorean: period.dateKorean,
+        weekLabel: period.weekLabel,
+      },
+      reportType: mailConfig.reportType,
+      reports,
+      sendSummary: {
+        subject: replacePeriodTokens_(mailConfig.subject, period),
+        recipientCount: mailConfig.to.length,
+        ccCount: mailConfig.cc.length,
+        alreadySent: isActuallySent_(mailConfig.status),
+      },
+      generatedAt: formatNow_(),
+    };
+  } finally {
+    if (ss && selectorSnapshot) {
+      restoreReportSelectors_(ss, selectorSnapshot);
+    }
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -90,11 +163,11 @@ function showMailTemplateGuide() {
 function authorizeReportAutomation() {
   requireAllProjectScopes_();
   SpreadsheetApp.getActiveSpreadsheet().toast(
-    '필요한 Google Sheets, Drive, 외부 요청, 메일 발송 권한이 승인되었습니다.',
+    '필요한 Google Sheets, Drive, 외부 요청, 메일 발송, 다운로드 창 권한이 승인되었습니다.',
     '권한 확인 완료',
     8,
   );
-  console.log('회계보고 자동화에 필요한 모든 권한이 승인되었습니다.');
+  console.log('회계보고 자동화와 인쇄·카톡 자료 생성에 필요한 모든 권한이 승인되었습니다.');
 }
 
 /**
@@ -212,21 +285,45 @@ function sendSelectedReport() {
   sendReport_(false);
 }
 
+/**
+ * ReportPackage.html에서 이미 만든 PDF를 재사용해 실제 메일을 발송합니다.
+ * 브라우저에서 실제 발송 확인을 받은 뒤 호출하므로 시트 알림창은 다시 띄우지 않습니다.
+ */
+function sendPreparedReportFromDialog(preparedPackage) {
+  requireAllProjectScopes_();
+  return sendReport_(false, {
+    preparedPackage,
+    requireConfirmation: false,
+    showAlerts: false,
+    throwErrors: true,
+  });
+}
+
 function requireAllProjectScopes_() {
   ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
 }
 
-function sendReport_(isTest) {
+function sendReport_(isTest, options) {
+  const settings = options || {};
+  const showAlerts = settings.showAlerts !== false;
+  const requireConfirmation = settings.requireConfirmation !== false;
   const ui = SpreadsheetApp.getUi();
   const lock = LockService.getDocumentLock();
   if (!lock.tryLock(CONFIG.LOCK_TIMEOUT_MS)) {
-    ui.alert('다른 발송 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요.');
-    return;
+    const message = '다른 발송 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요.';
+    if (showAlerts) {
+      ui.alert(message);
+    }
+    if (settings.throwErrors) {
+      throw new Error(message);
+    }
+    return { success: false, message };
   }
 
   let mailSheet = null;
   let mailColumns = null;
   let selectedRow = null;
+  let preserveSuccessfulStatus = false;
 
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -243,28 +340,31 @@ function sendReport_(isTest) {
     }
 
     if (!isTest && isActuallySent_(mailConfig.status)) {
+      preserveSuccessfulStatus = true;
       throw new Error('이미 실제 발송에 성공한 행입니다. 새 행을 만들어 발송해 주세요.');
     }
 
     const actualTo = isTest ? [mailConfig.sender || executorEmail] : mailConfig.to;
     const actualCc = isTest ? [] : mailConfig.cc;
-    const confirmation = ui.alert(
-      isTest ? '테스트 발송 확인' : '실제 발송 확인',
-      [
-        `발송 기준일: ${period.dateKorean}`,
-        `보고서: ${mailConfig.reportType}`,
-        `받는 사람: ${actualTo.length}명`,
-        `참조: ${actualCc.length}명`,
-        `제목: ${subject}`,
-        '',
-        isTest
-          ? '테스트 메일은 발송자 이메일 한 곳으로만 전송됩니다.'
-          : '확인을 누르면 실제 수신자에게 메일이 전송됩니다.',
-      ].join('\n'),
-      ui.ButtonSet.YES_NO,
-    );
-    if (confirmation !== ui.Button.YES) {
-      return;
+    if (requireConfirmation) {
+      const confirmation = ui.alert(
+        isTest ? '테스트 발송 확인' : '실제 발송 확인',
+        [
+          `발송 기준일: ${period.dateKorean}`,
+          `보고서: ${mailConfig.reportType}`,
+          `받는 사람: ${actualTo.length}명`,
+          `참조: ${actualCc.length}명`,
+          `제목: ${subject}`,
+          '',
+          isTest
+            ? '테스트 메일은 발송자 이메일 한 곳으로만 전송됩니다.'
+            : '확인을 누르면 실제 수신자에게 메일이 전송됩니다.',
+        ].join('\n'),
+        ui.ButtonSet.YES_NO,
+      );
+      if (confirmation !== ui.Button.YES) {
+        return { success: false, cancelled: true };
+      }
     }
 
     updateStatus_(
@@ -282,7 +382,19 @@ function sendReport_(isTest) {
       SpreadsheetApp.flush();
       Utilities.sleep(CONFIG.FORMULA_WAIT_MS);
 
-      reportArtifacts = buildReportArtifacts_(ss, mailConfig.reportType, period);
+      if (settings.preparedPackage) {
+        reportArtifacts = buildReportArtifacts_(ss, mailConfig.reportType, period, {
+          includePdf: false,
+        });
+        attachPreparedPdfBlobs_(
+          reportArtifacts,
+          settings.preparedPackage,
+          mailConfig.reportType,
+          period,
+        );
+      } else {
+        reportArtifacts = buildReportArtifacts_(ss, mailConfig.reportType, period);
+      }
       workbookBlob = createSanitizedWorkbookXlsx_(ss, period);
     } finally {
       restoreReportSelectors_(ss, selectorSnapshot);
@@ -332,11 +444,18 @@ function sendReport_(isTest) {
       '회계보고 자동화',
       5,
     );
-    ui.alert(isTest ? '테스트 발송 완료' : '실제 발송 완료');
+    if (showAlerts) {
+      ui.alert(isTest ? '테스트 발송 완료' : '실제 발송 완료');
+    }
+    return {
+      success: true,
+      message: isTest ? '테스트 메일을 발송했습니다.' : '실제 메일을 발송했습니다.',
+      sentAt: formatNow_(),
+    };
   } catch (error) {
     const message = getErrorMessage_(error);
     console.error(error && error.stack ? error.stack : error);
-    if (mailSheet && mailColumns && selectedRow) {
+    if (mailSheet && mailColumns && selectedRow && !preserveSuccessfulStatus) {
       updateStatus_(
         mailSheet,
         selectedRow,
@@ -344,7 +463,13 @@ function sendReport_(isTest) {
         mailColumns,
       );
     }
-    ui.alert('발송 실패', message, ui.ButtonSet.OK);
+    if (showAlerts) {
+      ui.alert('발송 실패', message, ui.ButtonSet.OK);
+    }
+    if (settings.throwErrors) {
+      throw new Error(message);
+    }
+    return { success: false, message };
   } finally {
     lock.releaseLock();
   }
@@ -662,7 +787,8 @@ function restoreReportSelectors_(ss, snapshot) {
   SpreadsheetApp.flush();
 }
 
-function buildReportArtifacts_(ss, reportType, period) {
+function buildReportArtifacts_(ss, reportType, period, options) {
+  const includePdf = !options || options.includePdf !== false;
   const includeWeekly = reportType === REPORT_TYPE.WEEKLY || reportType === REPORT_TYPE.BOTH;
   const includeMonthly = reportType === REPORT_TYPE.MONTHLY || reportType === REPORT_TYPE.BOTH;
   const artifacts = [];
@@ -677,12 +803,19 @@ function buildReportArtifacts_(ss, reportType, period) {
       ),
     );
     assertReportHasNoErrors_(range, '주간보고서');
-    artifacts.push({
+    const weeklyArtifact = {
       key: 'weekly',
       title: '주간보고',
       html: rangeToHtml_(range, '주간보고'),
-      pdfBlob: exportRangePdf_(ss, range, `${period.dateKey}_청년부_주간보고.pdf`),
-    });
+    };
+    if (includePdf) {
+      weeklyArtifact.pdfBlob = exportRangePdf_(
+        ss,
+        range,
+        `${period.dateKey}_청년부_주간보고.pdf`,
+      );
+    }
+    artifacts.push(weeklyArtifact);
   }
 
   if (includeMonthly) {
@@ -695,15 +828,86 @@ function buildReportArtifacts_(ss, reportType, period) {
       ),
     );
     assertReportHasNoErrors_(range, '월간보고서');
-    artifacts.push({
+    const monthlyArtifact = {
       key: 'monthly',
       title: '월간보고',
       html: rangeToHtml_(range, '월간보고'),
-      pdfBlob: exportRangePdf_(ss, range, `${period.dateKey}_청년부_월간보고.pdf`),
-    });
+    };
+    if (includePdf) {
+      monthlyArtifact.pdfBlob = exportRangePdf_(
+        ss,
+        range,
+        `${period.dateKey}_청년부_월간보고.pdf`,
+      );
+    }
+    artifacts.push(monthlyArtifact);
   }
 
   return artifacts;
+}
+
+/**
+ * 다운로드 창에서 PNG를 만드는 데 사용한 PDF를 메일 첨부에도 그대로 재사용합니다.
+ * 선택 행의 기준일·보고서 종류와 일치하는 PDF만 허용합니다.
+ */
+function attachPreparedPdfBlobs_(artifacts, preparedPackage, reportType, period) {
+  if (!preparedPackage || typeof preparedPackage !== 'object') {
+    throw new Error('준비된 보고서 자료가 없습니다. 자료 창을 닫고 다시 만들어 주세요.');
+  }
+  if (String(preparedPackage.dateKey || '') !== period.dateKey) {
+    throw new Error('준비된 자료의 기준일이 현재 선택 행과 다릅니다. 자료를 다시 만들어 주세요.');
+  }
+  if (normalizeReportType_(preparedPackage.reportType) !== reportType) {
+    throw new Error('준비된 자료의 보고서 종류가 현재 선택 행과 다릅니다. 자료를 다시 만들어 주세요.');
+  }
+  if (!Array.isArray(preparedPackage.reports)) {
+    throw new Error('준비된 PDF 자료 형식이 올바르지 않습니다. 자료를 다시 만들어 주세요.');
+  }
+
+  const preparedByKey = {};
+  preparedPackage.reports.forEach((report) => {
+    const key = String(report && report.key || '');
+    if ((key !== 'weekly' && key !== 'monthly') || preparedByKey[key]) {
+      throw new Error('준비된 PDF 목록이 올바르지 않습니다. 자료를 다시 만들어 주세요.');
+    }
+    preparedByKey[key] = report;
+  });
+
+  if (Object.keys(preparedByKey).length !== artifacts.length) {
+    throw new Error('준비된 PDF 개수가 현재 보고서 종류와 다릅니다. 자료를 다시 만들어 주세요.');
+  }
+
+  artifacts.forEach((artifact) => {
+    const prepared = preparedByKey[artifact.key];
+    const base64 = String(prepared && prepared.pdfBase64 || '').trim();
+    if (!base64 || base64.length > 30000000) {
+      throw new Error(`${artifact.title} PDF 자료가 없거나 너무 큽니다. 자료를 다시 만들어 주세요.`);
+    }
+
+    let bytes;
+    try {
+      bytes = Utilities.base64Decode(base64);
+    } catch (error) {
+      throw new Error(`${artifact.title} PDF 자료를 읽지 못했습니다. 자료를 다시 만들어 주세요.`);
+    }
+    if (
+      bytes.length < 5 ||
+      bytes[0] !== 37 ||
+      bytes[1] !== 80 ||
+      bytes[2] !== 68 ||
+      bytes[3] !== 70 ||
+      bytes[4] !== 45
+    ) {
+      throw new Error(`${artifact.title} 자료가 올바른 PDF가 아닙니다. 자료를 다시 만들어 주세요.`);
+    }
+
+    const reportName = artifact.key === 'weekly' ? '주간보고' : '월간보고';
+    artifact.pdfBlob = Utilities.newBlob(
+      bytes,
+      'application/pdf',
+      `${period.dateKey}_청년부_${reportName}.pdf`,
+    );
+  });
 }
 
 function buildMessageBodies_(template, period, artifacts) {

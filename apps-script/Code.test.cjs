@@ -97,7 +97,44 @@ try {
 }
 assert(missingRecipientError, 'missing recipient header validation');
 
-console.log('Code.gs header-row, header-map, email, and token tests passed');
+globalThis.Utilities = {
+  base64Decode: () => [37, 80, 68, 70, 45, 49],
+  newBlob: (bytes, mimeType, name) => ({ bytes, mimeType, name }),
+};
+const preparedArtifacts = [{ key: 'weekly', title: '\uC8FC\uAC04\uBCF4\uACE0' }];
+attachPreparedPdfBlobs_(
+  preparedArtifacts,
+  {
+    dateKey: '2026-08-23',
+    reportType: '\uC8FC\uAC04',
+    reports: [{ key: 'weekly', pdfBase64: 'JVBERi0x' }],
+  },
+  '\uC8FC\uAC04',
+  period,
+);
+assert(
+  preparedArtifacts[0].pdfBlob.name === '2026-08-23_\uCCAD\uB144\uBD80_\uC8FC\uAC04\uBCF4\uACE0.pdf',
+  'prepared PDF attachment reuse',
+);
+
+let mismatchedPreparedDateError = false;
+try {
+  attachPreparedPdfBlobs_(
+    [{ key: 'weekly', title: '\uC8FC\uAC04\uBCF4\uACE0' }],
+    {
+      dateKey: '2026-08-24',
+      reportType: '\uC8FC\uAC04',
+      reports: [{ key: 'weekly', pdfBase64: 'JVBERi0x' }],
+    },
+    '\uC8FC\uAC04',
+    period,
+  );
+} catch (error) {
+  mismatchedPreparedDateError = String(error.message).includes('\uAE30\uC900\uC77C');
+}
+assert(mismatchedPreparedDateError, 'prepared PDF date mismatch validation');
+
+console.log('Code.gs header, email, token, and prepared-PDF tests passed');
 `;
 
 vm.runInNewContext(`${code}\n${tests}`, { console });
