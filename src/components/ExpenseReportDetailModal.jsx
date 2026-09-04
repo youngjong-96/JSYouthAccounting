@@ -45,7 +45,7 @@ function numberToKorean(amount) {
     remaining = Math.floor(remaining / 10000);
     unitIndex += 1;
   }
-ddddd
+
   return result;
 }
 
@@ -542,7 +542,7 @@ function DesktopExpenseReportSheet({
           <tbody>
             <tr className="border-y border-black">
               <td className="w-[23%] border-r border-black px-3 py-2 text-left text-[13px] font-bold text-black">
-                비 고 (계좌번호)
+                비 고 (계좌번호/예금주)
               </td>
               <td className="px-3 py-2 text-center text-[13px] text-black">
                 {report.bank_account || '-'}
