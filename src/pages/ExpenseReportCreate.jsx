@@ -1200,7 +1200,7 @@ const ExpenseReportCreate = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-mist-200 p-4">
-          <label className={labelCls}>비고 (계좌번호)</label>
+          <label className={labelCls}>비고 (계좌번호/예금주)</label>
           <input
             type="text"
             value={bankAccount}

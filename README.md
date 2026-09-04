@@ -30,7 +30,7 @@ Google Sheets를 회계 원장 저장소로 사용하고, Supabase 기반 인증
 
 ### 데이터 흐름
 
-- 로그인, 세션 확인, 일반 프로필 조회는 Supabase Auth / `profiles` 테이블을 사용합니다.
+- 로그인, 세션 확인, 일반 프로필 조회는 Supabase Auth / `profiles` 테이블을 사용하며 최초 로그인 후 2시간이 지나면 현재 브라우저 세션을 자동 종료합니다.
 - 내 정보 수정은 `/api/accounts/profile`이 현재 로그인한 사용자만 검증해 안전하게 처리합니다.
 - 지출결의서 작성, 수정, 삭제, 체크 업데이트는 프런트엔드가 Supabase DB에 직접 접근합니다.
 - 지출결의서 목록 조회는 `/api/expense/reports`가 서버에서 권한을 확인한 뒤 작성자명과 경량 요약 데이터를 조합해 반환합니다.
@@ -53,6 +53,8 @@ Google Sheets를 회계 원장 저장소로 사용하고, Supabase 기반 인증
 | 자유게시판 | 게시글 작성, 조회, 수정, 삭제 |
 | 사용자 관리 | 승인/권한 관리, 계정 삭제 |
 | 마이페이지 | 내 정보 조회/수정 및 비밀번호 변경 |
+| 로그인 보안 | 토큰 자동 갱신과 무관하게 로그인 후 2시간이 지나면 자동 로그아웃하고 재로그인 요구 |
+| 이메일 기억하기 | 사용자가 선택한 경우에만 로그인 이메일을 현재 브라우저에 저장하고 다음 로그인 화면에 자동 입력 |
 
 ## 역할 및 권한
 
@@ -65,6 +67,10 @@ Google Sheets를 회계 원장 저장소로 사용하고, Supabase 기반 인증
 | `pending` | 불가 | 불가 | 불가 | 불가 | 불가 | 불가 |
 
 > `pending` 상태 사용자는 로그인 후 자동으로 로그아웃 처리됩니다.
+>
+> 로그인 최대 수명은 최초 인증 시각부터 2시간입니다. 새로고침이나 Supabase 토큰 갱신으로 연장되지 않으며, 시간이 지난 탭은 다시 활성화될 때에도 즉시 로그아웃됩니다.
+>
+> `이메일 기억하기`는 이메일 주소만 브라우저의 로컬 저장소에 보관합니다. 비밀번호와 인증 토큰은 이 기능으로 저장하지 않으며, 공용 기기에서는 체크하지 않는 것을 권장합니다.
 
 ## 프로젝트 구조
 
@@ -94,6 +100,8 @@ JSYouthAccounting/
 │  │  ├─ AuthContext.jsx
 │  │  └─ authPermissions.js
 │  ├─ lib/
+│  │  ├─ authSessionLifetime.js      # 로그인 후 2시간 고정 세션 만료 관리
+│  │  ├─ rememberedLoginEmail.js     # 선택한 로그인 이메일 저장 및 삭제
 │  │  ├─ expenseReportCacheInvalidation.js
 │  │  ├─ expenseReportPerformance.js  # 성능 측정 및 디버그 유틸
 │  │  ├─ expenseReportService.js      # 지출결의서 CRUD 및 읽기 API 연동
