@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Filter, Loader2, LogOut, Menu, Search, X } from 'lucide-react';
+import { Filter, Loader2, LogOut, Search, X } from 'lucide-react';
 import Sidebar from './Sidebar';
+import MobileBottomNavigation from './MobileBottomNavigation';
+import MobileTopBar from './MobileTopBar';
 import { useAuth } from '../context/AuthContext';
 import {
   completeRequestPerformanceMeasurement,
@@ -68,7 +70,6 @@ const Dashboard = () => {
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [week, setWeek] = useState('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [showLoginNotice, setShowLoginNotice] = useState(false);
   const { logout, token, user } = useAuth();
   const location = useLocation();
@@ -78,7 +79,7 @@ const Dashboard = () => {
   const isBoardPage = location.pathname.startsWith('/board');
   const isMyPage = location.pathname === '/mypage';
   const showFilter = !isUserManagement && !isExpensePage && !isBoardPage && !isMyPage;
-  const mainClassName = 'flex-1 w-full px-4 py-6 sm:px-6 md:max-w-[1120px] lg:max-w-[1320px] xl:max-w-[1480px] 2xl:max-w-[1640px] xl:px-8 mx-auto';
+  const mainClassName = 'flex-1 w-full px-4 pt-6 pb-24 sm:px-6 md:max-w-[1120px] md:py-6 lg:max-w-[1320px] xl:max-w-[1480px] 2xl:max-w-[1640px] xl:px-8 mx-auto';
 
   /**
    * 선택한 기간 기준으로 재정 요약 데이터를 조회합니다.
@@ -161,30 +162,15 @@ const Dashboard = () => {
 
   return (
     <div className="flex bg-cream-100 min-h-screen font-gmarket">
-      <Sidebar isOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+      <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <nav className="bg-navy-500 sticky top-0 z-30 shadow-lg shadow-navy-500/20">
+        <MobileTopBar onLogout={handleLogout} />
+
+        <nav className="sticky top-0 z-30 hidden bg-navy-500 shadow-lg shadow-navy-500/20 md:block">
           <div className="px-4 sm:px-6">
             <div className="flex justify-between h-14 items-center">
-              <div className="flex items-center gap-2">
-                {!isSidebarOpen && (
-                  <button
-                    onClick={() => setIsSidebarOpen(true)}
-                    className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
-                  >
-                    <Menu className="w-5 h-5" />
-                  </button>
-                )}
-                <span className="text-white/80 text-sm font-medium md:hidden">
-                  {isExpensePage
-                    ? location.pathname.includes('create') ? '지출결의서 작성' : '지출결의서 보기'
-                    : isUserManagement ? '사용자 관리'
-                    : isBoardPage ? '자유게시판'
-                    : isMyPage ? '내 정보'
-                    : '요약 보기'}
-                </span>
-              </div>
+              <div />
 
               <div className="flex items-center">
                 <button
@@ -293,6 +279,8 @@ const Dashboard = () => {
             <Outlet context={{ data, loading, year, month, week, fetchSummary }} />
           ) : null}
         </main>
+
+        <MobileBottomNavigation />
       </div>
 
       {showLoginNotice && (
