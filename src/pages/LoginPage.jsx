@@ -3,6 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import logoWhite from '../assets/logo_white.png';
 import { useAuth } from '../context/AuthContext';
+import {
+  consumeAuthSessionExpiredNotice,
+  startAuthSession,
+} from '../lib/authSessionLifetime';
+import {
+  clearRememberedLoginEmail,
+  getRememberedLoginEmail,
+  saveRememberedLoginEmail,
+} from '../lib/rememberedLoginEmail';
 import { supabase } from '../lib/supabase';
 
 /**
@@ -10,13 +19,21 @@ import { supabase } from '../lib/supabase';
  * @returns {JSX.Element}
  */
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => getRememberedLoginEmail());
+  const [rememberEmail, setRememberEmail] = useState(() => Boolean(getRememberedLoginEmail()));
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (consumeAuthSessionExpiredNotice()) {
+      setNotice('로그인 후 2시간이 지나 보안을 위해 자동 로그아웃되었습니다. 다시 로그인해 주세요.');
+    }
+  }, []);
 
   // 이미 로그인된 사용자는 메인 화면으로 바로 이동합니다.
   useEffect(() => {
@@ -34,6 +51,7 @@ const LoginPage = () => {
     event.preventDefault();
     setLoading(true);
     setError('');
+    setNotice('');
 
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({
@@ -46,6 +64,8 @@ const LoginPage = () => {
         return;
       }
 
+      startAuthSession(data.user.id);
+
       // 승인되지 않은 계정은 로그인 상태를 유지하지 않도록 차단합니다.
       const { data: profile } = await supabase
         .from('profiles')
@@ -57,6 +77,12 @@ const LoginPage = () => {
         await supabase.auth.signOut();
         setError('승인 대기 중입니다. 관리자 승인 후 다시 시도해 주세요.');
         return;
+      }
+
+      if (rememberEmail) {
+        saveRememberedLoginEmail(email);
+      } else {
+        clearRememberedLoginEmail();
       }
     } catch {
       setError('로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
@@ -100,6 +126,15 @@ const LoginPage = () => {
               <h2 className="mb-1 text-xl font-bold text-navy-500">로그인</h2>
               <p className="mb-8 text-sm text-mist-500">계정 정보를 입력해 주세요.</p>
 
+              {notice && (
+                <div
+                  role="status"
+                  className="mb-5 rounded-xl border border-gold-200 bg-gold-50 px-4 py-3 text-sm text-gold-700 animate-fadeIn"
+                >
+                  {notice}
+                </div>
+              )}
+
               <form onSubmit={handleLogin} className="space-y-5">
                 <div>
                   <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-navy-400">
@@ -109,6 +144,7 @@ const LoginPage = () => {
                     id="login-email"
                     type="email"
                     required
+                    autoComplete="username"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     className="w-full rounded-xl border-2 border-mist-200 bg-white px-4 py-3.5 text-[16px] text-navy-500 placeholder-mist-400 transition-all focus:border-gold-400 focus:outline-none focus:ring-1 focus:ring-gold-400/30"
@@ -133,6 +169,7 @@ const LoginPage = () => {
                       id="login-password"
                       type={showPassword ? 'text' : 'password'}
                       required
+                      autoComplete="current-password"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       className="w-full rounded-xl border-2 border-mist-200 bg-white px-4 py-3.5 pr-12 text-[16px] text-navy-500 placeholder-mist-400 transition-all focus:border-gold-400 focus:outline-none focus:ring-1 focus:ring-gold-400/30"
@@ -147,6 +184,26 @@ const LoginPage = () => {
                     </button>
                   </div>
                 </div>
+
+                <label
+                  htmlFor="remember-login-email"
+                  className="flex w-fit cursor-pointer items-center gap-2 text-sm text-navy-400"
+                >
+                  <input
+                    id="remember-login-email"
+                    type="checkbox"
+                    checked={rememberEmail}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setRememberEmail(checked);
+                      if (!checked) {
+                        clearRememberedLoginEmail();
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-mist-300 accent-gold-500"
+                  />
+                  이메일 기억하기
+                </label>
 
                 {error && (
                   <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 animate-fadeIn">
