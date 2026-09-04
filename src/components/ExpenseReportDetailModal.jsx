@@ -45,7 +45,7 @@ function numberToKorean(amount) {
     remaining = Math.floor(remaining / 10000);
     unitIndex += 1;
   }
-
+ddddd
   return result;
 }
 
@@ -371,7 +371,7 @@ function MobileExpenseReportView({
 
       <div className="grid grid-cols-1 gap-4">
         <div className="rounded-3xl border border-mist-200 bg-white p-4 shadow-sm">
-          <h2 className="text-base font-black text-navy-500">비고 (계좌번호)</h2>
+          <h2 className="text-base font-black text-navy-500">비고 (계좌번호/예금주)</h2>
           <p className="mt-2 text-sm font-medium break-words text-mist-500">{report.bank_account || '-'}</p>
         </div>
 
